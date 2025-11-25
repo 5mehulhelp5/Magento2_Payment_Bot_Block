@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright © Betanet. All rights reserved.
+ * See COPYING.txt for license details.
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
+    <default>
+        <checkout>
+            <block_payment_bot>
+                <active>1</active>
+                <require_form_check>0</require_form_check>
+                <bot_block_time>2</bot_block_time>
+                <bot_record_time>2</bot_record_time>
+                <bot_block_count>20</bot_block_count>
+            </block_payment_bot>
+        </checkout>
+    </default>
+</config>

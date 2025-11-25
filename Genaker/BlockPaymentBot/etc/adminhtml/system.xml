@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright © Magento, Inc. All rights reserved.
+ * See COPYING.txt for license details.
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Config:etc/system_file.xsd">
+    <system>
+        <section id="checkout">
+            <group id="block_payment_bot" translate="label" type="text" sortOrder="999" showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>Block Payment Bot</label>
+                <comment><![CDATA[Prevent bot attacks on payment processing]]></comment>
+                <field id="active" translate="label" type="select" sortOrder="5" showInDefault="1" showInWebsite="1" showInStore="1" canRestore="1">
+                    <label>Enable</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="require_form_check" translate="label comment" type="select" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1" canRestore="1">
+                    <label>Require Form Check Parameter</label>
+                    <comment><![CDATA[Validates that payment requests include the form_check parameter. This prevents bots that bypass the checkout form. Recommended: only if frontend is installed]]></comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="bot_block_time" translate="label comment" type="text" sortOrder="15" showInDefault="1" showInWebsite="1" showInStore="1" canRestore="1">
+                    <label>Bot Block Time (minutes)</label>
+                    <comment><![CDATA[Time period (in minutes) to block an IP after detecting bot behavior. Default: 2 minutes. Environment variable MAGE_BOT_BLOCK_TIME takes precedence.]]></comment>
+                    <validate>validate-number validate-greater-than-zero</validate>
+                </field>
+                <field id="bot_record_time" translate="label comment" type="text" sortOrder="20" showInDefault="1" showInWebsite="1" showInStore="1" canRestore="1">
+                    <label>Bot Record Time (minutes)</label>
+                    <comment><![CDATA[Time period (in minutes) to track payment attempts per IP/cart. Default: 2 minutes. Environment variable MAGE_BOT_RECORD_TIME takes precedence.]]></comment>
+                    <validate>validate-number validate-greater-than-zero</validate>
+                </field>
+                <field id="bot_block_count" translate="label comment" type="text" sortOrder="25" showInDefault="1" showInWebsite="1" showInStore="1" canRestore="1">
+                    <label>Bot Block Count</label>
+                    <comment><![CDATA[Maximum number of payment attempts allowed per IP/cart within the record time period. Default: 20. Environment variable MAGE_BOT_BLOCK_COUNT takes precedence.]]></comment>
+                    <validate>validate-number validate-greater-than-zero</validate>
+                </field>
+            </group>
+        </section>
+    </system>
+</config>
