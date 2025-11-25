@@ -22,6 +22,8 @@ Adjust until bots gone.
 Also, there is a package to import ENV variables from the file -> 
 https://github.com/Genaker/mage-dotenv
 
+# Magento Admin Config: 
+<img width="1301" height="571" alt="image" src="https://github.com/user-attachments/assets/6ea7823b-2637-478b-96ff-29d5a6c4ef11" />
 
 # Why are we using ENV variables and not a Magento config? 
 
