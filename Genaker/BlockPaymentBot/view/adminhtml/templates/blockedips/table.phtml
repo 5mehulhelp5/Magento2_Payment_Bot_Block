@@ -1,0 +1,88 @@
+<?php
+/**
+ * @var \Genaker\BlockPaymentBot\Block\Adminhtml\BlockedIps $block
+ * @var \Magento\Framework\Escaper $escaper
+ */
+$data = $block->getBlockedData();
+$blocks = $data['blocks'];
+$config = $data['config'];
+$redisConnected = $data['redis_connected'];
+?>
+<style>
+    .blocked-ips-page { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    .blocked-ips-page .page-header { margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid #e3e3e3; }
+    .blocked-ips-page .config-box { background: #f8f9fa; border-radius: 8px; padding: 16px 20px; margin-bottom: 24px; display: inline-block; }
+    .blocked-ips-page .config-box span { font-weight: 600; color: #333; }
+    .blocked-ips-page .config-box .val { color: #1979c3; margin-left: 4px; }
+    .blocked-ips-page .redis-error { background: #f8d7da; color: #721c24; padding: 16px; border-radius: 8px; margin-bottom: 20px; }
+    .blocked-ips-page .empty-state { background: #e7f3ff; padding: 32px; border-radius: 8px; text-align: center; color: #1979c3; }
+    .blocked-ips-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .blocked-ips-table th { background: #373330; color: #fff; padding: 14px 16px; text-align: left; font-weight: 600; font-size: 13px; }
+    .blocked-ips-table td { padding: 12px 16px; border-bottom: 1px solid #eee; font-size: 13px; }
+    .blocked-ips-table tr:hover { background: #fafafa; }
+    .blocked-ips-table tr:last-child td { border-bottom: none; }
+    .blocked-ips-table .ip-cell { font-family: 'Monaco', 'Consolas', monospace; font-weight: 600; color: #c7254e; }
+    .blocked-ips-table .count-cell { font-weight: 600; color: #333; }
+    .blocked-ips-table .reason-badge { display: inline-block; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 500; }
+    .blocked-ips-table .reason-limit { background: #fff3cd; color: #856404; }
+    .blocked-ips-table .reason-exceeded { background: #f8d7da; color: #721c24; }
+    .blocked-ips-table .reason-other { background: #e2e3e5; color: #383d41; }
+    .blocked-ips-table .endpoint-cell { font-family: 'Monaco', 'Consolas', monospace; font-size: 12px; color: #555; max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
+    .blocked-ips-page .summary { margin-top: 16px; color: #666; font-size: 13px; }
+</style>
+
+<div class="blocked-ips-page">
+    <div class="page-header">
+        <h1><?= $escaper->escapeHtml(__('Blocked IP Addresses')) ?></h1>
+    </div>
+
+    <?php if (!$redisConnected): ?>
+        <div class="redis-error">
+            <?= $escaper->escapeHtml(__('Cannot connect to Redis. Block Payment Bot uses Redis for tracking. Check app/etc/env.php cache configuration.')) ?>
+        </div>
+    <?php else: ?>
+        <div class="config-box">
+            <span><?= $escaper->escapeHtml(__('Block limit:')) ?></span><span class="val"><?= (int)$config['block_limit'] ?></span>
+            <span style="margin-left: 16px;"><?= $escaper->escapeHtml(__('Block time:')) ?></span><span class="val"><?= (int)$config['block_time'] ?> min</span>
+            <span style="margin-left: 16px;"><?= $escaper->escapeHtml(__('Record window:')) ?></span><span class="val"><?= (int)$config['record_time'] ?> min</span>
+        </div>
+
+        <?php if (empty($blocks)): ?>
+            <div class="empty-state">
+                <?= $escaper->escapeHtml(__('No blocked IPs at the moment.')) ?>
+            </div>
+        <?php else: ?>
+            <table class="blocked-ips-table">
+                <thead>
+                    <tr>
+                        <th><?= $escaper->escapeHtml(__('IP Address')) ?></th>
+                        <th><?= $escaper->escapeHtml(__('Calls')) ?></th>
+                        <th><?= $escaper->escapeHtml(__('Limit')) ?></th>
+                        <th><?= $escaper->escapeHtml(__('Endpoint / Controller')) ?></th>
+                        <th><?= $escaper->escapeHtml(__('Reason')) ?></th>
+                        <th><?= $escaper->escapeHtml(__('Blocked At')) ?></th>
+                        <th><?= $escaper->escapeHtml(__('Expires In')) ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($blocks as $row): ?>
+                        <?php
+                        $reason = $row['reason'] ?? '';
+                        $reasonClass = str_contains($reason, 'EXCEEDED') ? 'reason-exceeded' : (str_contains($reason, 'LIMIT') ? 'reason-limit' : 'reason-other');
+                        ?>
+                        <tr>
+                            <td class="ip-cell"><?= $escaper->escapeHtml($row['ip'] ?? '-') ?></td>
+                            <td class="count-cell"><?= (int)($row['counter'] ?? 0) ?></td>
+                            <td><?= (int)($row['limit'] ?? 0) ?></td>
+                            <td class="endpoint-cell" title="<?= $escaper->escapeHtmlAttr($row['url'] ?? '') ?>"><?= $escaper->escapeHtml($row['endpoint'] ?? '-') ?></td>
+                            <td><span class="reason-badge <?= $escaper->escapeHtmlAttr($reasonClass) ?>"><?= $escaper->escapeHtml($block->formatReason($reason)) ?></span></td>
+                            <td><?= $escaper->escapeHtml(date('Y-m-d H:i:s', $row['blocked_at'] ?? 0)) ?></td>
+                            <td><?= $escaper->escapeHtml($block->formatExpiresIn($row['expires_in'] ?? 0)) ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+            <div class="summary"><?= $escaper->escapeHtml(__('Total: %1 blocked IP(s)', count($blocks))) ?></div>
+        <?php endif; ?>
+    <?php endif; ?>
+</div>

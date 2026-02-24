@@ -82,6 +82,23 @@ class AbstractLoadBeforeTestHelper
         $method->setAccessible(true);
         return $method->invoke($this->actualInstance);
     }
+
+    /**
+     * Expose getMatchingRule for testing block logic with mocked config
+     */
+    public function getMatchingRule(string $requestUri): ?array
+    {
+        $method = $this->reflection->getMethod('getMatchingRule');
+        $method->setAccessible(true);
+        return $method->invoke($this->actualInstance, $requestUri);
+    }
+
+    public function getClientIp(): string
+    {
+        $method = $this->reflection->getMethod('getClientIp');
+        $method->setAccessible(true);
+        return $method->invoke($this->actualInstance);
+    }
 }
 
 // Mock classes that implement actual Magento interfaces!
@@ -92,21 +109,30 @@ class MockScopeConfig implements \Magento\Framework\App\Config\ScopeConfigInterf
     private $botBlockTime;
     private $botRecordTime;
     private $botBlockCount;
-    
+    private $ipWhitelist;
+    private $botRules;
+    private $behindProxy;
+
     public function __construct(
-        $enabled = true, 
-        $requireFormCheck = true, 
-        $botBlockTime = 2, 
-        $botRecordTime = 2, 
-        $botBlockCount = 20
+        $enabled = true,
+        $requireFormCheck = true,
+        $botBlockTime = 2,
+        $botRecordTime = 2,
+        $botBlockCount = 20,
+        $ipWhitelist = null,
+        $botRules = null,
+        $behindProxy = false
     ) {
         $this->enabled = $enabled;
         $this->requireFormCheck = $requireFormCheck;
         $this->botBlockTime = $botBlockTime;
         $this->botRecordTime = $botRecordTime;
         $this->botBlockCount = $botBlockCount;
+        $this->ipWhitelist = $ipWhitelist;
+        $this->botRules = $botRules;
+        $this->behindProxy = $behindProxy;
     }
-    
+
     public function getValue($path, $scopeType = \Magento\Store\Model\ScopeInterface::SCOPE_STORE, $scopeCode = null)
     {
         if ($path === 'checkout/block_payment_bot/active') {
@@ -123,6 +149,21 @@ class MockScopeConfig implements \Magento\Framework\App\Config\ScopeConfigInterf
         }
         if ($path === 'checkout/block_payment_bot/bot_block_count') {
             return $this->botBlockCount;
+        }
+        if ($path === 'checkout/block_payment_bot/ip_whitelist') {
+            if ($this->ipWhitelist === null || empty($this->ipWhitelist)) {
+                return null;
+            }
+            return serialize(array_map(fn($row) => is_array($row) ? $row : ['name' => '', 'ip' => $row], (array) $this->ipWhitelist));
+        }
+        if ($path === 'checkout/block_payment_bot/bot_rules') {
+            if ($this->botRules === null || empty($this->botRules)) {
+                return null;
+            }
+            return is_string($this->botRules) ? $this->botRules : serialize($this->botRules);
+        }
+        if ($path === 'checkout/block_payment_bot/behind_proxy') {
+            return $this->behindProxy;
         }
         return null;
     }
@@ -221,6 +262,176 @@ function generateRandomTestIP(): string
     
     return implode('.', array_merge($net, [$lastOctet]));
 }
+
+describe('AbstractLoadBefore - Block logic with mocked config', function () {
+    afterEach(function () {
+        cleanupServerEnvironment();
+    });
+
+    test('getMatchingRule returns rule from mocked bot_rules config', function () {
+        $botRules = [
+            ['path' => '/\/payment-information/i', 'block_count' => 5, 'block_time' => 10]
+        ];
+        $scopeConfig = new MockScopeConfig(true, false, null, null, null, null, $botRules);
+        $logger = new MockLogger();
+        $helper = new AbstractLoadBeforeTestHelper($scopeConfig, $logger);
+
+        $rule = $helper->getMatchingRule('/rest/default/V1/guest-carts/xyz/payment-information');
+
+        expect($rule)->toBeArray()
+            ->and($rule['block_count'])->toBe(5)
+            ->and($rule['block_time'])->toBe(10);
+    });
+
+    test('getMatchingRule returns null when path does not match', function () {
+        $botRules = [
+            ['path' => '/\/other-endpoint/i', 'block_count' => 5, 'block_time' => 10]
+        ];
+        $scopeConfig = new MockScopeConfig(true, false, null, null, null, null, $botRules);
+        $logger = new MockLogger();
+        $helper = new AbstractLoadBeforeTestHelper($scopeConfig, $logger);
+
+        $rule = $helper->getMatchingRule('/rest/default/V1/guest-carts/xyz/payment-information');
+
+        expect($rule)->toBeNull();
+    });
+
+    test('getMatchingRule uses Bot Block Count/Time config when rule has empty block_count/block_time', function () {
+        $botRules = [
+            ['path' => '/\/payment-information/i']
+        ];
+        $scopeConfig = new MockScopeConfig(true, false, 5, 3, 50, null, $botRules); // block_time=5, record_time=3, block_count=50
+        $logger = new MockLogger();
+        $helper = new AbstractLoadBeforeTestHelper($scopeConfig, $logger);
+
+        $rule = $helper->getMatchingRule('/rest/default/V1/guest-carts/xyz/payment-information');
+
+        expect($rule)->toBeArray()
+            ->and($rule['block_count'])->toBe(50)
+            ->and($rule['block_time'])->toBe(5);
+    });
+
+    test('getMatchingRule uses default rules when bot_rules config is empty', function () {
+        $scopeConfig = new MockScopeConfig(true, false, null, null, null, null, null);
+        $logger = new MockLogger();
+        $helper = new AbstractLoadBeforeTestHelper($scopeConfig, $logger);
+
+        $rule = $helper->getMatchingRule('/rest/default/V1/guest-carts/xyz/payment-information');
+
+        expect($rule)->toBeArray()
+            ->and($rule['block_count'])->toBe(20)
+            ->and($rule['block_time'])->toBe(2);
+    });
+
+    test('main rule: totals-information matches default (config.xml / TRACKED_ENDPOINTS)', function () {
+        $scopeConfig = new MockScopeConfig(true, false, null, null, null, null, null);
+        $logger = new MockLogger();
+        $helper = new AbstractLoadBeforeTestHelper($scopeConfig, $logger);
+
+        $rule = $helper->getMatchingRule('/rest/default/V1/guest-carts/abc123/totals-information');
+
+        expect($rule)->toBeArray()
+            ->and($rule['block_count'])->toBe(20)
+            ->and($rule['block_time'])->toBe(2);
+    });
+
+    test('main rule: payment-information matches default (config.xml / TRACKED_ENDPOINTS)', function () {
+        $scopeConfig = new MockScopeConfig(true, false, null, null, null, null, null);
+        $logger = new MockLogger();
+        $helper = new AbstractLoadBeforeTestHelper($scopeConfig, $logger);
+
+        $rule = $helper->getMatchingRule('/rest/default/V1/guest-carts/xyz456/payment-information');
+
+        expect($rule)->toBeArray()
+            ->and($rule['block_count'])->toBe(20)
+            ->and($rule['block_time'])->toBe(2);
+    });
+
+    test('getClientIp uses REMOTE_ADDR when behind_proxy is disabled', function () {
+        $scopeConfig = new MockScopeConfig(true, false, 2, 2, 20, null, null, false);
+        $logger = new MockLogger();
+        $helper = new AbstractLoadBeforeTestHelper($scopeConfig, $logger);
+
+        $_SERVER['REMOTE_ADDR'] = '203.0.113.50';
+        $_SERVER['HTTP_X_FORWARDED_FOR'] = '10.0.0.1, 192.168.1.1';
+
+        expect($helper->getClientIp())->toBe('203.0.113.50');
+    });
+
+    test('getClientIp reads proxy header when behind_proxy is enabled', function () {
+        $scopeConfig = new MockScopeConfig(true, false, 2, 2, 20, null, null, true);
+        $logger = new MockLogger();
+        $helper = new AbstractLoadBeforeTestHelper($scopeConfig, $logger);
+
+        $_SERVER['REMOTE_ADDR'] = '10.0.0.1';
+        $_SERVER['HTTP_X_FORWARDED_FOR'] = '198.51.100.25, 10.0.0.1';
+
+        expect($helper->getClientIp())->toBe('198.51.100.25');
+    });
+
+    test('getClientIp falls back to REMOTE_ADDR when proxy header has invalid IP', function () {
+        $scopeConfig = new MockScopeConfig(true, false, 2, 2, 20, null, null, true);
+        $logger = new MockLogger();
+        $helper = new AbstractLoadBeforeTestHelper($scopeConfig, $logger);
+
+        $_SERVER['REMOTE_ADDR'] = '10.0.0.1';
+        $_SERVER['HTTP_X_FORWARDED_FOR'] = 'not-an-ip';
+
+        expect($helper->getClientIp())->toBe('10.0.0.1');
+    });
+
+    test('getClientIp reads Fastly-Client-IP when behind_proxy is enabled', function () {
+        $scopeConfig = new MockScopeConfig(true, false, 2, 2, 20, null, null, true);
+        $logger = new MockLogger();
+        $helper = new AbstractLoadBeforeTestHelper($scopeConfig, $logger);
+
+        $_SERVER['REMOTE_ADDR'] = '10.0.0.1';
+        unset($_SERVER['HTTP_X_FORWARDED_FOR']);
+        $_SERVER['FASTLY-CLIENT-IP'] = '203.0.113.99';
+
+        expect($helper->getClientIp())->toBe('203.0.113.99');
+    });
+
+    test('getClientIp ignores proxy headers when behind_proxy is disabled even with spoofed header', function () {
+        $scopeConfig = new MockScopeConfig(true, false, 2, 2, 20, null, null, false);
+        $logger = new MockLogger();
+        $helper = new AbstractLoadBeforeTestHelper($scopeConfig, $logger);
+
+        $_SERVER['REMOTE_ADDR'] = '198.51.100.77';
+        $_SERVER['HTTP_X_FORWARDED_FOR'] = '1.2.3.4';
+        $_SERVER['FASTLY-CLIENT-IP'] = '5.6.7.8';
+        $_SERVER['HTTP_CF_CONNECTING_IP'] = '9.10.11.12';
+
+        expect($helper->getClientIp())->toBe('198.51.100.77');
+    });
+
+    test('IP whitelist skips blocking for whitelisted IP', function () {
+        $scopeConfig = new MockScopeConfig(true, false, 2, 2, 2, ['127.0.0.1'], null, false);
+        $logger = new MockLogger();
+        $mockObserver = new MockObserver();
+        $ip = '127.0.0.1';
+        $cartId = 'cart-whitelist-' . uniqid();
+
+        setupServerEnvironment([
+            'REQUEST_METHOD' => 'POST',
+            'REQUEST_URI' => "/rest/default/V1/guest-carts/{$cartId}/payment-information",
+            'REMOTE_ADDR' => $ip
+        ]);
+
+        $_ENV['PEST'] = true;
+        $helper = new AbstractLoadBeforeTestHelper($scopeConfig, $logger);
+
+        $result1 = $helper->execute($mockObserver);
+        $result2 = $helper->execute($mockObserver);
+        $result3 = $helper->execute($mockObserver);
+
+        expect($result1)->toBe(0)
+            ->and($result2)->toBe(0)
+            ->and($result3)->toBe(0);
+
+        unset($_ENV['PEST']);
+    });
+});
 
 describe('AbstractLoadBefore - Configuration Tests', function () {
     afterEach(function () {
@@ -500,6 +711,307 @@ describe('AbstractLoadBefore - Configuration Tests', function () {
         echo "  ├─ Result: 0 (early return)\n";
         echo "  └─ No logs generated ✓\n";
     });
+});
+
+describe('AbstractLoadBefore - IP Whitelist Tests', function () {
+    afterEach(function () {
+        cleanupServerEnvironment();
+    });
+
+    test('whitelisted IP skips all processing and returns 0', function () {
+        $whitelistedIp = '192.0.2.100';
+        $cartId = 'cart-whitelist-test-' . uniqid();
+
+        setupServerEnvironment([
+            'REQUEST_METHOD' => 'POST',
+            'REQUEST_URI' => "/rest/default/V1/guest-carts/{$cartId}/payment-information",
+            'REMOTE_ADDR' => $whitelistedIp
+        ]);
+
+        $scopeConfig = new MockScopeConfig(true, false, 2, 2, 20, [$whitelistedIp]);
+        $logger = new MockLogger();
+        $mockObserver = new MockObserver();
+
+        $observer = new AbstractLoadBeforeTestHelper($scopeConfig, $logger);
+        $result = $observer->execute($mockObserver);
+
+        expect($result)->toBe(0)
+            ->and($logger->logs)->toBeEmpty();
+
+        echo "\n";
+        echo "  Test: IP Whitelist - whitelisted IP skips processing\n";
+        echo "  ├─ IP: {$whitelistedIp} (in whitelist)\n";
+        echo "  ├─ Result: 0 (early return, no blocking)\n";
+        echo "  └─ Whitelist works ✓\n";
+    });
+
+    test('non-whitelisted IP is processed normally', function () {
+        $ip = generateRandomTestIP();
+        $cartId = 'cart-non-whitelist-' . uniqid();
+
+        setupServerEnvironment([
+            'REQUEST_METHOD' => 'POST',
+            'REQUEST_URI' => "/rest/default/V1/guest-carts/{$cartId}/payment-information",
+            'REMOTE_ADDR' => $ip
+        ]);
+
+        $config = require BP . '/app/etc/env.php';
+        $redis = new \Redis();
+        $redis->pconnect(
+            $config['cache']['frontend']['default']['backend_options']['server'],
+            (int) $config['cache']['frontend']['default']['backend_options']['port']
+        );
+        $redis->set('Cart_IP_Check_' . $ip, "true", 3600);
+        $redis->set('Cart_' . $cartId . '_IP', $ip, 120);
+        $redis->set('Cart_' . $ip . '_IP_payment', 0, 120);
+
+        $scopeConfig = new MockScopeConfig(true, false, 2, 2, 20, ['192.0.2.99']);
+        $logger = new MockLogger();
+        $mockObserver = new MockObserver();
+
+        $observer = new AbstractLoadBeforeTestHelper($scopeConfig, $logger);
+        $result = $observer->execute($mockObserver);
+
+        $redis->del('Cart_IP_Check_' . $ip);
+        $redis->del('Cart_' . $cartId . '_IP');
+        $redis->del('Cart_' . $ip . '_IP_payment');
+
+        expect($result)->not->toBe(0);
+
+        echo "\n";
+        echo "  Test: IP Whitelist - non-whitelisted IP is processed\n";
+        echo "  ├─ IP: {$ip} (NOT in whitelist)\n";
+        echo "  ├─ Result: " . ($result ?? 'null') . " (processed)\n";
+        echo "  └─ Non-whitelisted IP processed ✓\n";
+    });
+});
+
+describe('AbstractLoadBefore - Bot Rules Block and Unblock', function () {
+    beforeEach(function () {
+        cleanupServerEnvironment();
+        unset($_ENV['MAGE_BOT_BLOCK_TIME']);
+        unset($_ENV['MAGE_BOT_RECORD_TIME']);
+        unset($_ENV['MAGE_BOT_BLOCK_COUNT']);
+        $_ENV['PEST'] = true;
+    });
+
+    afterEach(function () {
+        cleanupServerEnvironment();
+        unset($_ENV['PEST']);
+    });
+
+    test('bot rule: block after 2 attempts, unblock after 3 seconds', function () {
+        $cartId = 'cart-rule-unblock-' . uniqid();
+        $ip = generateRandomTestIP();
+
+        $botRules = [
+            [
+                'path' => '/\/V1\/guest-carts\/.*\/payment-information/i',
+                'block_count' => 2,
+                'block_time' => 2
+            ]
+        ];
+        $scopeConfig = new MockScopeConfig(true, false, null, null, null, null, $botRules);
+        $logger = new MockLogger();
+        $mockObserver = new MockObserver();
+
+        setupServerEnvironment([
+            'REQUEST_METHOD' => 'POST',
+            'REQUEST_URI' => "/rest/default/V1/guest-carts/{$cartId}/payment-information",
+            'REMOTE_ADDR' => $ip
+        ]);
+
+        $config = require BP . '/app/etc/env.php';
+        $redis = new \Redis();
+        $redis->pconnect(
+            $config['cache']['frontend']['default']['backend_options']['server'],
+            (int) $config['cache']['frontend']['default']['backend_options']['port']
+        );
+        $redis->set('Cart_IP_Check_' . $ip, "true", 3600);
+
+        $observer = new AbstractLoadBeforeTestHelperWithSeconds($scopeConfig, $logger);
+
+        echo "\n";
+        echo "  Test: Bot Rule - block after 2, unblock after 3 seconds\n";
+        echo "  ├─ Rule: block_count=2, block_time=2 seconds\n";
+        echo "  ├─ IP: {$ip}\n";
+        echo "  ├─ Cart: {$cartId}\n";
+
+        $result1 = $observer->execute($mockObserver);
+        echo "  ├─ Request 1: " . ($result1 ?: 'Success') . " ✓\n";
+        expect($result1)->not->toBe('DIE_CART_COUNTER_AT_LIMIT')
+            ->and($result1)->not->toBe('DIE_IP_COUNTER_AT_LIMIT');
+
+        $result2 = $observer->execute($mockObserver);
+        echo "  ├─ Request 2: " . ($result2 ?: 'Success') . " ✓\n";
+        expect($result2)->not->toBe('DIE_CART_COUNTER_AT_LIMIT')
+            ->and($result2)->not->toBe('DIE_IP_COUNTER_AT_LIMIT');
+
+        $result3 = $observer->execute($mockObserver);
+        echo "  ├─ Request 3: {$result3} 🚫 (blocked)\n";
+        expect($result3)->toBeIn(['DIE_CART_COUNTER_AT_LIMIT', 'DIE_IP_COUNTER_AT_LIMIT']);
+
+        echo "  ├─ Wait: 3 seconds (block_time=2s, wait for unlock)...\n";
+        sleep(3);
+
+        $result4 = $observer->execute($mockObserver);
+        echo "  ├─ Request 4 (after 3s): " . ($result4 ?: 'Success') . " ✓ (unlocked)\n";
+        echo "  └─ Block after 2 → wait 3s → unlocked ✓\n";
+
+        expect($result4)->not->toBe('DIE_CART_COUNTER_AT_LIMIT')
+            ->and($result4)->not->toBe('DIE_CART_COUNTER_EXCEEDED')
+            ->and($result4)->not->toBe('DIE_IP_COUNTER_AT_LIMIT')
+            ->and($result4)->not->toBe('DIE_IP_COUNTER_EXCEEDED');
+
+        $redis->del('Cart_IP_Check_' . $ip);
+        $redis->del('Cart_' . $cartId);
+        $redis->del('Cart_' . $cartId . '_IP');
+        $redis->del('Cart_' . $ip . '_IP_payment');
+    })->skip(function () {
+        return getenv('SKIP_SLOW_TESTS') === '1';
+    }, 'Slow test: takes 3+ seconds with sleep()');
+});
+
+describe('AbstractLoadBefore - Blocked IPs Grid', function () {
+    beforeEach(function () {
+        cleanupServerEnvironment();
+        $_ENV['PEST'] = true;
+        $_ENV['MAGE_BOT_BLOCK_COUNT'] = 2;
+        $_ENV['MAGE_BOT_RECORD_TIME'] = 60;
+        $_ENV['MAGE_BOT_BLOCK_TIME'] = 60;
+    });
+
+    afterEach(function () {
+        cleanupServerEnvironment();
+        unset($_ENV['PEST'], $_ENV['MAGE_BOT_BLOCK_COUNT'], $_ENV['MAGE_BOT_RECORD_TIME'], $_ENV['MAGE_BOT_BLOCK_TIME']);
+    });
+
+    test('after lock blocked IP is available in grid/BlockedIpsProvider', function () {
+        $cartId = 'cart-grid-test-' . uniqid();
+        $ip = generateRandomTestIP();
+
+        setupServerEnvironment([
+            'REQUEST_METHOD' => 'POST',
+            'REQUEST_URI' => "/rest/default/V1/guest-carts/{$cartId}/payment-information",
+            'REMOTE_ADDR' => $ip
+        ]);
+
+        $config = require BP . '/app/etc/env.php';
+        $redis = new \Redis();
+        $redis->pconnect(
+            $config['cache']['frontend']['default']['backend_options']['server'],
+            (int) $config['cache']['frontend']['default']['backend_options']['port']
+        );
+        $redis->set('Cart_IP_Check_' . $ip, "true", 3600);
+
+        $scopeConfig = new MockScopeConfig(true, false);
+        $logger = new MockLogger();
+        $mockObserver = new MockObserver();
+
+        $helper1 = new AbstractLoadBeforeTestHelper($scopeConfig, $logger);
+        $result1 = $helper1->execute($mockObserver);
+        $helper2 = new AbstractLoadBeforeTestHelper($scopeConfig, $logger);
+        $result2 = $helper2->execute($mockObserver);
+        $helper3 = new AbstractLoadBeforeTestHelper($scopeConfig, $logger);
+        $result3 = $helper3->execute($mockObserver);
+
+        expect($result3)->toBeIn(['DIE_CART_COUNTER_AT_LIMIT', 'DIE_IP_COUNTER_AT_LIMIT']);
+
+        $provider = new \Genaker\BlockPaymentBot\Model\BlockedIpsProvider();
+        $data = $provider->getBlockedIps();
+
+        expect($data['redis_connected'])->toBeTrue();
+        expect($data['blocks'])->not->toBeEmpty();
+
+        $found = null;
+        foreach ($data['blocks'] as $block) {
+            if (($block['ip'] ?? '') === $ip) {
+                $found = $block;
+                break;
+            }
+        }
+
+        expect($found)->not->toBeNull()
+            ->and($found['ip'])->toBe($ip)
+            ->and($found['counter'])->toBeGreaterThanOrEqual(2)
+            ->and($found['reason'])->toBeIn(['DIE_CART_COUNTER_AT_LIMIT', 'DIE_IP_COUNTER_AT_LIMIT']);
+
+        expect($found['url'] ?? '')->toContain('payment-information')
+            ->and($found['endpoint'] ?? '')->toContain('payment-information');
+
+        echo "\n";
+        echo "  Test: After lock, IP available in BlockedIpsProvider/grid\n";
+        echo "  ├─ IP: {$ip}\n";
+        echo "  ├─ Path in grid: " . ($found['endpoint'] ?? '-') . " ✓\n";
+        echo "  └─ IP found in grid data ✓\n";
+
+        $redis->del('Cart_IP_Check_' . $ip);
+        $redis->del('Cart_' . $cartId);
+        $redis->del('Cart_' . $cartId . '_IP');
+        $redis->del('Cart_' . $ip . '_IP_payment');
+        $redis->del('BlockedIP_' . $ip . '_payment');
+        $redis->zRem('BlockedIPs_Set', 'BlockedIP_' . $ip . '_payment');
+    });
+
+    test('when locked path/endpoint is available in grid', function () {
+        $cartId = 'cart-path-test-' . uniqid();
+        $ip = generateRandomTestIP();
+        $requestUri = "/rest/default/V1/guest-carts/{$cartId}/payment-information";
+
+        setupServerEnvironment([
+            'REQUEST_METHOD' => 'POST',
+            'REQUEST_URI' => $requestUri,
+            'REMOTE_ADDR' => $ip
+        ]);
+
+        $config = require BP . '/app/etc/env.php';
+        $redis = new \Redis();
+        $redis->pconnect(
+            $config['cache']['frontend']['default']['backend_options']['server'],
+            (int) $config['cache']['frontend']['default']['backend_options']['port']
+        );
+        $redis->set('Cart_IP_Check_' . $ip, "true", 3600);
+
+        $scopeConfig = new MockScopeConfig(true, false);
+        $logger = new MockLogger();
+        $mockObserver = new MockObserver();
+
+        foreach ([1, 2, 3] as $i) {
+            $helper = new AbstractLoadBeforeTestHelper($scopeConfig, $logger);
+            $helper->execute($mockObserver);
+        }
+
+        $provider = new \Genaker\BlockPaymentBot\Model\BlockedIpsProvider();
+        $data = $provider->getBlockedIps();
+
+        $found = null;
+        foreach ($data['blocks'] as $block) {
+            if (($block['ip'] ?? '') === $ip) {
+                $found = $block;
+                break;
+            }
+        }
+
+        expect($found)->not->toBeNull()
+            ->and($found['url'])->toContain($cartId)
+            ->and($found['url'])->toContain('payment-information')
+            ->and($found['endpoint'])->toContain('payment-information')
+            ->and($found['type'])->toBe('payment');
+
+        echo "\n";
+        echo "  Test: Path/endpoint/type available in grid when locked\n";
+        echo "  ├─ Request URI: {$requestUri}\n";
+        echo "  ├─ Grid url: " . ($found['url'] ?? '-') . "\n";
+        echo "  └─ Grid endpoint: " . ($found['endpoint'] ?? '-') . " ✓\n";
+
+        $redis->del('Cart_IP_Check_' . $ip);
+        $redis->del('Cart_' . $cartId);
+        $redis->del('Cart_' . $cartId . '_IP');
+        $redis->del('Cart_' . $ip . '_IP_payment');
+        $redis->del('BlockedIP_' . $ip . '_payment');
+        $redis->zRem('BlockedIPs_Set', 'BlockedIP_' . $ip . '_payment');
+    });
+
 });
 
 describe('AbstractLoadBefore - Request Method Tests', function () {
@@ -1289,8 +1801,9 @@ describe('AbstractLoadBefore - Blocked IP Logging', function () {
             echo "  │  └─ Expires at: " . date('Y-m-d H:i:s', $data['expires_at']) . "\n";
             
             // Check if added to set
-            $inSet = $redis->sIsMember('BlockedIPs_Set', $blockKey);
-            echo "  ├─ Added to BlockedIPs_Set: " . ($inSet ? 'YES' : 'NO') . "\n";
+            $score = $redis->zScore('BlockedIPs_Set', $blockKey);
+            $inSet = $score !== false;
+            echo "  ├─ Added to BlockedIPs_Set (sorted): " . ($inSet ? 'YES (expires ' . date('H:i:s', (int) $score) . ')' : 'NO') . "\n";
             echo "  └─ Blocked IP logged successfully ✓\n";
             
             // Verify data structure
@@ -1315,7 +1828,7 @@ describe('AbstractLoadBefore - Blocked IP Logging', function () {
         $redis->del('Cart_' . $cartId . '_IP');
         $redis->del('Cart_' . $ip . '_IP_payment');
         $redis->del($blockKey);
-        $redis->sRem('BlockedIPs_Set', $blockKey);
+        $redis->zRem('BlockedIPs_Set', $blockKey);
     });
     
     test('explains blocked IP logging system', function () {
@@ -1323,8 +1836,8 @@ describe('AbstractLoadBefore - Blocked IP Logging', function () {
         echo "  Blocked IP Logging System\n";
         echo "  \n";
         echo "  Redis Keys:\n";
-        echo "  ├─ BlockedIP_{{IP}}_{{TYPE}}: JSON with block details\n";
-        echo "  └─ BlockedIPs_Set: Set of all blocked IP keys\n";
+        echo "  ├─ BlockedIP_{{IP}}_{{TYPE}}: JSON with block details (TTL = block time)\n";
+        echo "  └─ BlockedIPs_Set: Sorted set (score = expiry timestamp, auto-prunes)\n";
         echo "  \n";
         echo "  Logged Data:\n";
         echo "  ├─ ip: IP address that was blocked\n";

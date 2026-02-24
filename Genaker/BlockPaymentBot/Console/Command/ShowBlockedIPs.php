@@ -95,39 +95,29 @@ class ShowBlockedIPs extends Command
             return Command::FAILURE;
         }
 
-        // Get all blocked IP keys
-        $blockedKeys = $redis->sMembers('BlockedIPs_Set');
-        
+        $currentTime = time();
+
+        // Prune expired entries, then fetch only active ones
+        $redis->zRemRangeByScore('BlockedIPs_Set', '-inf', (string) $currentTime);
+        $blockedKeys = $redis->zRangeByScore('BlockedIPs_Set', (string) $currentTime, '+inf');
+
         if (empty($blockedKeys)) {
             $output->writeln('<comment>No blocked IPs found.</comment>');
             return Command::SUCCESS;
         }
 
         $activeBlocks = [];
-        $expiredBlocks = [];
-        $currentTime = time();
 
-        // Process each blocked IP
         foreach ($blockedKeys as $key) {
             $data = $redis->get($key);
-            
+
             if ($data === false) {
-                // Key expired, remove from set
-                $expiredBlocks[] = $key;
-                $redis->sRem('BlockedIPs_Set', $key);
+                $redis->zRem('BlockedIPs_Set', $key);
                 continue;
             }
 
             $blockData = json_decode($data, true);
             if ($blockData === null) {
-                continue;
-            }
-
-            // Check if block has expired
-            if ($blockData['expires_at'] <= $currentTime) {
-                $expiredBlocks[] = $key;
-                $redis->sRem('BlockedIPs_Set', $key);
-                $redis->del($key);
                 continue;
             }
 

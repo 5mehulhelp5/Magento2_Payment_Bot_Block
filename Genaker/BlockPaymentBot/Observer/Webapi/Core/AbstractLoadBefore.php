@@ -23,11 +23,11 @@ class AbstractLoadBefore implements \Magento\Framework\Event\ObserverInterface
      */
     private const TRACKED_ENDPOINTS = [
         [
-            'pattern' => '/\/V1\/guest-carts\/(.*)\/totals-information/i',
+            'pattern' => '/\/V1\/guest-carts\/([^\/]+)\/totals-information/i',
             'type' => 'cart_check'
         ],
         [
-            'pattern' => '/\/V1\/guest-carts\/(.*)\/payment-information/i',
+            'pattern' => '/\/V1\/guest-carts\/([^\/]+)\/payment-information/i',
             'type' => 'payment'
         ]
     ];
@@ -77,6 +77,105 @@ class AbstractLoadBefore implements \Magento\Framework\Event\ObserverInterface
     public function getBotBlockCount()
     {
         return $this->scopeConfig->getValue('checkout/block_payment_bot/bot_block_count', ScopeInterface::SCOPE_STORE);
+    }
+
+    public function getBehindProxy()
+    {
+        return $this->scopeConfig->getValue('checkout/block_payment_bot/behind_proxy', ScopeInterface::SCOPE_STORE);
+    }
+
+    /**
+     * Get client IP.
+     * When "Behind Trusted Proxy" is enabled: reads from proxy headers.
+     * When disabled: uses REMOTE_ADDR only (proxy headers ignored).
+     *
+     * @return string
+     */
+    private function getClientIp(): string
+    {
+        $remoteAddr = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+
+        if ($this->getBehindProxy()) {
+            $proxyHeaders = ['HTTP_X_FORWARDED_FOR', 'FASTLY-CLIENT-IP', 'HTTP_CF_CONNECTING_IP'];
+            foreach ($proxyHeaders as $header) {
+                if (!empty($_SERVER[$header])) {
+                    $parts = explode(',', (string) $_SERVER[$header]);
+                    $candidate = trim($parts[0]);
+                    if (filter_var($candidate, FILTER_VALIDATE_IP)) {
+                        return $candidate;
+                    }
+                }
+            }
+        }
+
+        return $remoteAddr;
+    }
+
+    /**
+     * Get whitelisted IPs - these are never blocked
+     *
+     * @return string[]
+     */
+    private function getIpWhitelist(): array
+    {
+        $value = $this->scopeConfig->getValue('checkout/block_payment_bot/ip_whitelist', ScopeInterface::SCOPE_STORE);
+        if (empty($value)) {
+            return [];
+        }
+        $decoded = is_string($value) ? @unserialize($value) : $value;
+        if (empty($decoded) || !is_array($decoded)) {
+            return [];
+        }
+        $ips = [];
+        foreach ($decoded as $row) {
+            $ip = trim($row['ip'] ?? '');
+            if ($ip !== '') {
+                $ips[] = $ip;
+            }
+        }
+        return $ips;
+    }
+
+    /**
+     * Default rules when no rules set in admin (from TRACKED_ENDPOINTS)
+     */
+    private const DEFAULT_RULES = [
+        ['path' => '/\/V1\/guest-carts\/([^\/]+)\/totals-information/i', 'block_count' => 20, 'block_time' => 2],
+        ['path' => '/\/V1\/guest-carts\/([^\/]+)\/payment-information/i', 'block_count' => 20, 'block_time' => 2],
+    ];
+
+    /**
+     * Get matching bot rule for request URI, or null to use defaults
+     * Uses admin bot_rules when set, otherwise default rules from config/constant
+     *
+     * @param string $requestUri
+     * @return array|null Rule with block_count, block_time
+     */
+    private function getMatchingRule(string $requestUri): ?array
+    {
+        $rules = $this->scopeConfig->getValue('checkout/block_payment_bot/bot_rules', ScopeInterface::SCOPE_STORE);
+        $decoded = null;
+        if (!empty($rules)) {
+            $decoded = is_string($rules) ? @unserialize($rules) : $rules;
+        }
+        if (empty($decoded) || !is_array($decoded)) {
+            $decoded = self::DEFAULT_RULES;
+        }
+        $defaultBlockCount = (int) ($this->getBotBlockCount() ?: 20);
+        $defaultBlockTime = (int) ($this->getBotBlockTime() ?: 2);
+
+        foreach ($decoded as $rule) {
+            $path = $rule['path'] ?? '';
+            if ($path !== '' && @preg_match($path, $requestUri)) {
+                $blockCount = $rule['block_count'] ?? '';
+                $blockTime = $rule['block_time'] ?? '';
+                return [
+                    'block_count' => (int) ($blockCount !== '' ? $blockCount : $defaultBlockCount),
+                    'block_time' => (int) ($blockTime !== '' ? $blockTime : $defaultBlockTime),
+                ];
+            }
+        }
+        return null;
     }
 
     /**
@@ -178,7 +277,8 @@ class AbstractLoadBefore implements \Magento\Framework\Event\ObserverInterface
     public function execute(
         \Magento\Framework\Event\Observer $observer
     ) {
-        if (($_SERVER['REQUEST_METHOD'] !== 'POST' && !isset($_GET['bot_test'])) || $this->flag === true) {
+        $allowBotTest = isset($_GET['bot_test']) && (isset($_ENV['PEST']) && $_ENV['PEST'] === true);
+        if (($_SERVER['REQUEST_METHOD'] !== 'POST' && !$allowBotTest) || $this->flag === true) {
             return 0;
         }
 
@@ -208,7 +308,11 @@ class AbstractLoadBefore implements \Magento\Framework\Event\ObserverInterface
 
             // Process if an endpoint was matched
             if ($endpointConfig !== null) {
-                $ip = $_SERVER['REMOTE_ADDR'];
+                $ip = $this->getClientIp();
+
+                if (in_array($ip, $this->getIpWhitelist(), true)) {
+                    return 0;
+                }
 
                 // Validate form_check parameter for payment requests (skip in PEST mode, configurable via admin)
                 if ($endpointConfig['type'] !== 'cart_check' 
@@ -240,30 +344,16 @@ class AbstractLoadBefore implements \Magento\Framework\Event\ObserverInterface
                     }
                 }
 
-                if (isset($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-                    $ips = $_SERVER['HTTP_X_FORWARDED_FOR'];
-                } else if (isset($_SERVER['FASTLY-CLIENT-IP'])) {
-                    $ips = $_SERVER['FASTLY-CLIENT-IP'];
-                } else if (isset($_SERVER["HTTP_CF_CONNECTING_IP"])) {
-                    $ips = $_SERVER["HTTP_CF_CONNECTING_IP"];
-                } else {
-                    $ips = $_SERVER['REMOTE_ADDR'];
-                }
-
-                // We may have comma separated list
-                $ip = trim(count(explode(',', (string) $ips)) > 0 ? explode(',', (string) $ips)[0] : $ips);
-
-               
-
-                // Use ENV values if set, otherwise fall back to admin config
+                // ENV takes precedence, then matching bot rule, then default fields
+                $rule = $this->getMatchingRule($_SERVER['REQUEST_URI']);
                 if (!isset($_ENV['MAGE_BOT_BLOCK_TIME'])) {
-                    $_ENV['MAGE_BOT_BLOCK_TIME'] = $this->getBotBlockTime() ?: 2;
+                    $_ENV['MAGE_BOT_BLOCK_TIME'] = $rule !== null ? $rule['block_time'] : ($this->getBotBlockTime() ?: 2);
                 }
                 if (!isset($_ENV['MAGE_BOT_RECORD_TIME'])) {
-                    $_ENV['MAGE_BOT_RECORD_TIME'] = $this->getBotRecordTime() ?: 2;
+                    $_ENV['MAGE_BOT_RECORD_TIME'] = $rule !== null ? $rule['block_time'] : ($this->getBotRecordTime() ?: 2);
                 }
                 if (!isset($_ENV['MAGE_BOT_BLOCK_COUNT'])) {
-                    $_ENV['MAGE_BOT_BLOCK_COUNT'] = $this->getBotBlockCount() ?: 20;
+                    $_ENV['MAGE_BOT_BLOCK_COUNT'] = $rule !== null ? $rule['block_count'] : ($this->getBotBlockCount() ?: 20);
                 }
 
                 // Get Redis connection
@@ -302,7 +392,7 @@ class AbstractLoadBefore implements \Magento\Framework\Event\ObserverInterface
                         return 0;
                     }
 
-                    $this->logger->error("Genaker_BlockPaymentBot::AbstractLoadBefore observer Begin track: ip: " . $ip . ", cartId: " . $cartId);
+                    $this->logger->debug("Genaker_BlockPaymentBot::AbstractLoadBefore observer Begin track: ip: " . $ip . ", cartId: " . $cartId);
 
                     $result = $this->checkAndUpdateCounters($redis, $cartId, $ip, $endpointConfig['type']);
                     if ($result !== null) {
@@ -343,23 +433,26 @@ class AbstractLoadBefore implements \Magento\Framework\Event\ObserverInterface
      */
     private function logBlockedIP($redis, string $ip, string $type, string $url, int $counter, string $reason)
     {
+        $path = strpos($url, '?') !== false ? substr($url, 0, strpos($url, '?')) : $url;
         $blockKey = 'BlockedIP_' . $ip . '_' . $type;
+        $blockTtl = $this->getTimeInSeconds($_ENV['MAGE_BOT_BLOCK_TIME']);
+        $expiresAt = time() + $blockTtl;
         $blockData = [
             'ip' => $ip,
             'type' => $type,
-            'url' => $url,
+            'url' => $path,
             'counter' => $counter,
             'limit' => $_ENV['MAGE_BOT_BLOCK_COUNT'] ?? 20,
             'reason' => $reason,
             'blocked_at' => time(),
-            'expires_at' => time() + $this->getTimeInSeconds($_ENV['MAGE_BOT_BLOCK_TIME'])
+            'expires_at' => $expiresAt
         ];
-        
-        // Store as JSON with TTL matching block time
-        $redis->setex($blockKey, $this->getTimeInSeconds($_ENV['MAGE_BOT_BLOCK_TIME']), json_encode($blockData));
-        
-        // Add to set of all blocked IPs for easy listing
-        $redis->sAdd('BlockedIPs_Set', $blockKey);
+
+        $redis->setex($blockKey, $blockTtl, json_encode($blockData));
+
+        // Sorted set: score = expiry timestamp, auto-prunes expired on each write
+        $redis->zRemRangeByScore('BlockedIPs_Set', '-inf', (string) time());
+        $redis->zAdd('BlockedIPs_Set', $expiresAt, $blockKey);
     }
 
     /**
@@ -379,7 +472,7 @@ class AbstractLoadBefore implements \Magento\Framework\Event\ObserverInterface
         $previousIP = $redis->get('Cart_' . $cartId . '_IP');
 
         // If the cheater changed IP address we are blocking that guy right away
-        if ($previousIP !== $ip && $previousIP != false) {
+        if ($previousIP !== $ip && $previousIP !== false) {
             $this->logger->error("Genaker_BlockPaymentBot::AbstractLoadBefore cheater detected, ip: " . $ip . ", previousIP: " . $previousIP . ", cartId: " . $cartId);
             $this->logBlockedIP($redis, $ip, $type, $_SERVER['REQUEST_URI'], $counterIP, 'DIE_CHEATER_IP_CHANGED');
             http_response_code(511);

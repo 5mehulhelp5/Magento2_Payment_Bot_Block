@@ -57,11 +57,11 @@ describe('ShowBlockedIPs Command', function () {
         );
         
         // Clear all blocked IPs
-        $blockedKeys = $redis->sMembers('BlockedIPs_Set');
+        $blockedKeys = $redis->zRange('BlockedIPs_Set', 0, -1);
         foreach ($blockedKeys as $key) {
             $redis->del($key);
-            $redis->sRem('BlockedIPs_Set', $key);
         }
+        $redis->del('BlockedIPs_Set');
         
         // Execute command
         $command = new \Genaker\BlockPaymentBot\Console\Command\ShowBlockedIPs();
@@ -106,7 +106,7 @@ describe('ShowBlockedIPs Command', function () {
         ];
         
         $redis->setex($blockKey, 600, json_encode($blockData));
-        $redis->sAdd('BlockedIPs_Set', $blockKey);
+        $redis->zAdd('BlockedIPs_Set', $blockData['expires_at'], $blockKey);
         
         echo "\n";
         echo "  Test: Display blocked IPs\n";
@@ -144,7 +144,7 @@ describe('ShowBlockedIPs Command', function () {
         
         // Cleanup
         $redis->del($blockKey);
-        $redis->sRem('BlockedIPs_Set', $blockKey);
+        $redis->zRem('BlockedIPs_Set', $blockKey);
     });
     
     test('command cleans up expired blocks', function () {
@@ -159,13 +159,13 @@ describe('ShowBlockedIPs Command', function () {
         $expiredIP = '10.0.0.1';
         $expiredKey = 'BlockedIP_' . $expiredIP . '_payment';
         
-        // Add to set but don't create the key (simulates expired key)
-        $redis->sAdd('BlockedIPs_Set', $expiredKey);
+        // Add to sorted set with past expiry (simulates expired entry)
+        $redis->zAdd('BlockedIPs_Set', time() - 10, $expiredKey);
         
         echo "\n";
         echo "  Test: Cleanup expired blocks\n";
-        echo "  ├─ Added expired key to set: {$expiredKey}\n";
-        echo "  ├─ Key data: (expired/missing)\n";
+        echo "  ├─ Added expired key to sorted set: {$expiredKey}\n";
+        echo "  ├─ Score: past timestamp (expired)\n";
         
         // Execute command
         $command = new \Genaker\BlockPaymentBot\Console\Command\ShowBlockedIPs();
@@ -175,22 +175,18 @@ describe('ShowBlockedIPs Command', function () {
         $exitCode = $command->run($input, $output);
         $outputText = $output->fetch();
         
-        // Check if key was removed from set
-        $stillInSet = $redis->sIsMember('BlockedIPs_Set', $expiredKey);
+        // Check if key was removed from sorted set (pruned by zRemRangeByScore)
+        $score = $redis->zScore('BlockedIPs_Set', $expiredKey);
+        $stillInSet = $score !== false;
         
         echo "  ├─ Exit code: {$exitCode}\n";
         echo "  ├─ Key still in set: " . ($stillInSet ? 'YES' : 'NO') . "\n";
-        
-        if (strpos($outputText, 'Cleaned up') !== false) {
-            echo "  ├─ Output shows cleanup performed\n";
-        }
-        
         echo "  └─ Expired blocks cleaned up ✓\n";
         
         expect($stillInSet)->toBeFalse();
         
         // Cleanup (just in case)
-        $redis->sRem('BlockedIPs_Set', $expiredKey);
+        $redis->zRem('BlockedIPs_Set', $expiredKey);
     });
     
     test('command configuration is correct', function () {
@@ -216,7 +212,7 @@ describe('ShowBlockedIPs Command', function () {
         echo "  \n";
         echo "  What it does:\n";
         echo "  ├─ Connects to Redis\n";
-        echo "  ├─ Retrieves all blocked IPs from BlockedIPs_Set\n";
+        echo "  ├─ Retrieves active blocked IPs from BlockedIPs_Set (sorted set)\n";
         echo "  ├─ Displays data in formatted table\n";
         echo "  ├─ Automatically removes expired entries\n";
         echo "  └─ Shows summary statistics\n";

@@ -15,6 +15,18 @@
                     <label>Enable</label>
                     <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
                 </field>
+                <field id="ip_whitelist" translate="label" sortOrder="7"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>IP Whitelist</label>
+                    <frontend_model>Genaker\BlockPaymentBot\Block\Adminhtml\Form\Field\IpWhitelist</frontend_model>
+                    <backend_model>Magento\Config\Model\Config\Backend\Serialized\ArraySerialized</backend_model>
+                    <comment><![CDATA[IPs in this list are never blocked. One IP per row.]]></comment>
+                </field>
+                <field id="behind_proxy" translate="label comment" type="select" sortOrder="8" showInDefault="1" showInWebsite="1" showInStore="1" canRestore="1">
+                    <label>Behind Trusted Proxy / CDN</label>
+                    <comment><![CDATA[Enable if the server is behind a trusted proxy, CDN, or load balancer (Fastly, Cloudflare, Varnish, Nginx). When enabled, client IP is read from proxy headers (X-Forwarded-For, Fastly-Client-IP, CF-Connecting-IP). When disabled, only REMOTE_ADDR is used — proxy headers are ignored to prevent IP spoofing.]]></comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
                 <field id="require_form_check" translate="label comment" type="select" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1" canRestore="1">
                     <label>Require Form Check Parameter</label>
                     <comment><![CDATA[Validates that payment requests include the form_check parameter. This prevents bots that bypass the checkout form. Recommended: only if frontend is installed]]></comment>
@@ -34,6 +46,13 @@
                     <label>Bot Block Count</label>
                     <comment><![CDATA[Maximum number of payment attempts allowed per IP/cart within the record time period. Default: 20. Environment variable MAGE_BOT_BLOCK_COUNT takes precedence.]]></comment>
                     <validate>validate-number validate-greater-than-zero</validate>
+                </field>
+                <field id="bot_rules" translate="label" sortOrder="30"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Bot Rules</label>
+                    <frontend_model>Genaker\BlockPaymentBot\Block\Adminhtml\Form\Field\BotRules</frontend_model>
+                    <backend_model>Magento\Config\Model\Config\Backend\Serialized\ArraySerialized</backend_model>
+                    <comment><![CDATA[Per-path overrides. Path uses regex with delimiters. Examples: <code>/\/V1\/guest-carts\/.*\/payment-information/i</code> (payment), <code>/\/V1\/customers/i</code> (register), <code>/\/contact/i</code> (contact). Rules override default block count/time when path matches.]]></comment>
                 </field>
             </group>
         </section>

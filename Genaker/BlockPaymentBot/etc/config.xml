@@ -10,10 +10,23 @@
         <checkout>
             <block_payment_bot>
                 <active>1</active>
+                <behind_proxy>0</behind_proxy>
                 <require_form_check>0</require_form_check>
                 <bot_block_time>2</bot_block_time>
                 <bot_record_time>2</bot_record_time>
                 <bot_block_count>20</bot_block_count>
+                <bot_rules>
+                    <rule_0>
+                        <path><![CDATA[/\/V1\/guest-carts\/([^\/]+)\/totals-information/i]]></path>
+                        <block_count>20</block_count>
+                        <block_time>2</block_time>
+                    </rule_0>
+                    <rule_1>
+                        <path><![CDATA[/\/V1\/guest-carts\/([^\/]+)\/payment-information/i]]></path>
+                        <block_count>20</block_count>
+                        <block_time>2</block_time>
+                    </rule_1>
+                </bot_rules>
             </block_payment_bot>
         </checkout>
     </default>
