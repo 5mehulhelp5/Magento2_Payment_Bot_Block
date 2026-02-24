@@ -1,109 +1,88 @@
 # Mage2 Module Genaker BlockPaymentBot
 
-How to test 
+Blocks bot abuse on payment endpoints (guest-carts payment-information, totals-information). Uses Redis for counters and block state; configurable via Magento Admin or ENV variables.
 
-send POSTrequest to {domain}/rest/default/V1/guest-carts/dgfjsdhfgsdhfgsdhfgsdhfgsdjfk/payment-information
+## Main Functionalities
 
-With the same cart ID multiple times after, your request will be blocked for 5 minutes...
+- **Rate limiting** — Limit payment attempts per IP/cart within a configurable time window; block for a configurable duration when exceeded.
+- **Magento Admin config** — Enable/disable, IP whitelist, behind proxy/CDN, require form check, block time, record time, block count, per-path Bot Rules.
+- **Admin Blocked IPs page** — System → Blocked IPs: view currently blocked IPs with reason, URL, counter, expiry.
+- **CLI** — `php bin/magento genaker:blockbot:show-blocked-ips` to list blocked IPs.
+- **IP whitelist** — Whitelisted IPs are never blocked.
+- **Behind trusted proxy** — Optional use of `X-Forwarded-For`, `Fastly-Client-IP`, `CF-Connecting-IP` when enabled in config (avoids spoofing when not behind proxy).
+- **Bot Rules** — Per-path regex rules with custom request count and block time (e.g. payment-information, register, contact).
 
-Now you can send GET request for the test with the parameter ?bot_test=1
+## How to test
+
+Send POST requests to:
+
+```
+{domain}/rest/default/V1/guest-carts/{cartId}/payment-information
+```
+
+With the same cart ID multiple times; after the configured limit (default 20) the request will be blocked for the block time (default 2 minutes).
+
+For **test mode only** (e.g. with `PEST` env set), you can use GET with `?bot_test=1`:
 
 ```
 https://domain.com/rest/default/V1/guest-carts/GKxNF6em8IzxaZlk78YR3soEYby/payment-information?bot_test=1
 ```
-Also, you can set ENV variables to adjust the logic: 
 
- - **$_ENV['MAGE_BOT_BLOCK_TIME']** Block bot for N Minutes, Default 2.
- - **$_ENV['MAGE_BOT_RECORD_TIME']** Time  in minutes during which the counter will not be null. So if you have 60, then your counting limit for 1 hour. Default 2.
- - **$_ENV['MAGE_BOT_BLOCK_COUNT']** Request counter limit when user will be locked for **MAGE_BOT_BLOCK_TIME** minutes. Default 20
+## ENV variables (override Admin config)
 
-Adjust until bots gone.
-# ENV package 
-Also, there is a package to import ENV variables from the file -> 
-https://github.com/Genaker/mage-dotenv
+- **MAGE_BOT_BLOCK_TIME** — Block duration in minutes. Default 2.
+- **MAGE_BOT_RECORD_TIME** — Time window in minutes for the counter. Default 2.
+- **MAGE_BOT_BLOCK_COUNT** — Request limit per IP/cart in that window. Default 20.
 
-# Magento Admin Config: 
-<img width="1301" height="571" alt="image" src="https://github.com/user-attachments/assets/6ea7823b-2637-478b-96ff-29d5a6c4ef11" />
+Optional: [Genaker/mage-dotenv](https://github.com/Genaker/mage-dotenv) to load ENV from a file.
 
-# Why are we using ENV variables and not a Magento config? 
+## Magento Admin config
 
-Magento 2 is a slow legacy system; however, the new approach is to store configurations in the env variables.
-Enviremental config has gained significant popularity in PHP over recent years. It uses dotenv files, which are named after the de facto file name: .env. 
-These plain text files define the environment variables required for an application to work as a list of key/value pairs.
-When using the Magento configuration, you need magento to be up and running. This extension doesn't load the entire magento but blocks bots immediately. If you will load magento bots will consume entire resources from your servers. Don't load Magento when you don't need it. Use PHP microservices! 
+**Stores → Configuration → Checkout → Block Payment Bot**
 
-I am lovers of the magento config. Config contains hundreds of thousands of records and even cached. It takes minutes to load every request from the cache (it still requires unzipping and unserializing). Magento config is an excellent example of how not to do it. With the bigger projects, merchants have more significant issues with magento. 
+- **Enable** — Turn protection on/off.
+- **IP Whitelist** — IPs never blocked (Name + IP per row).
+- **Behind Trusted Proxy / CDN** — Use proxy headers for client IP only when behind a trusted proxy.
+- **Require Form Check Parameter** — Validate `form_check` in payment payload (recommended when frontend is installed).
+- **Bot Block Time (minutes)** — How long to block after limit. Default 2.
+- **Bot Record Time (minutes)** — Window for counting attempts. Default 2.
+- **Bot Block Count** — Max attempts in that window. Default 20.
+- **Bot Rules** — Per-path overrides (path regex, request count, block time). Examples: payment-information, register, contact.
 
-
-You can adjust the rate and time.
-
-    ``genaker/module-blockpaymentbot``
-
- - [Main Functionalities](#markdown-header-main-functionalities)
- - [Installation](#markdown-header-installation)
- - [Configuration](#markdown-header-configuration)
- - [Specifications](#markdown-header-specifications)
- - [Attributes](#markdown-header-attributes)
-
-
-## Main Functionalities
-
+**System → Blocked IPs** — View active blocked IPs.
 
 ## Installation
+
 \* = in production please use the `--keep-generated` option
 
 ### Type 1: Zip file
 
- - Unzip the zip file in `app/code/Genaker`
- - Enable the module by running `php bin/magento module:enable Genaker_BlockPaymentBot`
- - Apply database updates by running `php bin/magento setup:upgrade`\*
- - Flush the cache by running `php bin/magento cache:flush`
+- Unzip in `app/code/Genaker`
+- `php bin/magento module:enable Genaker_BlockPaymentBot`
+- `php bin/magento setup:upgrade`\*
+- `php bin/magento cache:flush`
 
 ### Type 2: Composer
 
- - Make the module available in a composer repository for example:
-    - private repository `repo.magento.com`
-    - public repository `packagist.org`
-    - public github repository as vcs
- - Add the composer repository to the configuration by running `composer config repositories.repo.magento.com composer https://repo.magento.com/`
- - Install the module composer by running `composer require genaker/module-blockpaymentbot`
- - enable the module by running `php bin/magento module:enable Genaker_BlockPaymentBot`
- - apply database updates by running `php bin/magento setup:upgrade`\*
- - Flush the cache by running `php bin/magento cache:flush`
-
-
-## Configuration
-
-Using **ENV** varriables
-
+- Add the repository, then: `composer require genaker/module-blockpaymentbot`
+- `php bin/magento module:enable Genaker_BlockPaymentBot`
+- `php bin/magento setup:upgrade`\*
+- `php bin/magento cache:flush`
 
 ## Specifications
 
- - Observer
- - core_abstract_load_before > Genaker\BlockPaymentBot\Observer\Webapi\Core\AbstractLoadBefore
+- **Observer:** `core_abstract_load_before` → `Genaker\BlockPaymentBot\Observer\Webapi\Core\AbstractLoadBefore`
+- **Requirement:** phpRedis. If Redis is not configured, the module does not break the site but protection is disabled.
 
+## Testing (curl)
 
-## Requirements
-This Module has a dependency on  phpRedis.  If your magento store is not running Redis, this module will have no effect on protecting your site.  It won't break your site, but the protection will not be enabled.
-
-## Testing
-
-To verify the module is working as expected, you can use curl on cli to test.
-
-```
+```bash
 curl -i -X POST https://www.MYDOMAIN.com/rest/default/V1/guest-carts/GKxNF6em8IzxaZlk78YR3soEYby/payment-information
 ```
 
-The expected outcome of the above is for the first 20 request you should get something like this:
+- First requests (up to limit): normal response or validation errors.
+- After limit: `Bye!` (HTTP 511).
 
-```
-{"message":"One or more input exceptions have occurred.","errors":[{"...
-```
+---
 
-After the first 20 requests you should get:
-
-```
-Bye!
-```
-
-
+`genaker/module-blockpaymentbot`
