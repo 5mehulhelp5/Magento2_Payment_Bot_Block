@@ -11,6 +11,8 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Helper\Table;
+use Magento\Framework\App\Config\ScopeConfigInterface;
+use Magento\Store\Model\ScopeInterface;
 
 class ShowBlockedIPs extends Command
 {
@@ -18,6 +20,21 @@ class ShowBlockedIPs extends Command
      * @var \Redis|null
      */
     private $redis = null;
+
+    /**
+     * @var ScopeConfigInterface
+     */
+    private $scopeConfig;
+
+    /**
+     * @param ScopeConfigInterface $scopeConfig
+     */
+    public function __construct(
+        ScopeConfigInterface $scopeConfig
+    ) {
+        parent::__construct();
+        $this->scopeConfig = $scopeConfig;
+    }
 
     /**
      * {@inheritdoc}
@@ -47,6 +64,41 @@ class ShowBlockedIPs extends Command
         $output->writeln('  Block Limit: ' . $botBlockCount . ' attempts');
         $output->writeln('  Block Duration: ' . $botBlockTime . ' minutes');
         $output->writeln('  Tracking Window: ' . $botRecordTime . ' minutes');
+        $output->writeln('');
+        
+        // Display IP Whitelist
+        $ipWhitelist = $this->getIpWhitelist();
+        $output->writeln('<comment>IP Whitelist:</comment>');
+        if (empty($ipWhitelist)) {
+            $output->writeln('  (none configured)');
+        } else {
+            foreach ($ipWhitelist as $entry) {
+                $name = $entry['name'] ?? '';
+                $ip = $entry['ip'] ?? '';
+                if ($name) {
+                    $output->writeln('  - ' . $name . ' (' . $ip . ')');
+                } else {
+                    $output->writeln('  - ' . $ip);
+                }
+            }
+        }
+        $output->writeln('');
+        
+        // Display Bot Rules
+        $botRules = $this->getBotRules();
+        $output->writeln('<comment>Bot Rules:</comment>');
+        if (empty($botRules)) {
+            $output->writeln('  (using defaults)');
+        } else {
+            foreach ($botRules as $rule) {
+                $path = $rule['path'] ?? '';
+                $blockCount = $rule['block_count'] ?? $botBlockCount;
+                $blockTime = $rule['block_time'] ?? $botBlockTime;
+                $output->writeln('  Path: ' . $path);
+                $output->writeln('    Block Count: ' . $blockCount . ' attempts');
+                $output->writeln('    Block Time: ' . $blockTime . ' minutes');
+            }
+        }
         $output->writeln('');
 
         // Get Redis connection
@@ -152,14 +204,8 @@ class ShowBlockedIPs extends Command
             $output->writeln('');
         }
 
-        // Display cleanup summary
-        if (!empty($expiredBlocks)) {
-            $output->writeln('<comment>Cleaned up ' . count($expiredBlocks) . ' expired block(s)</comment>');
-        }
-
         $output->writeln('');
         $output->writeln('<info>Total Active Blocks: ' . count($activeBlocks) . '</info>');
-        $output->writeln('<info>Total Cleaned Up: ' . count($expiredBlocks) . '</info>');
 
         return Command::SUCCESS;
     }
@@ -276,6 +322,87 @@ class ShowBlockedIPs extends Command
             return substr($url, 0, 47) . '...';
         }
         return $url;
+    }
+
+    /**
+     * Get whitelisted IPs from config
+     *
+     * @return array
+     */
+    private function getIpWhitelist(): array
+    {
+        $value = $this->scopeConfig->getValue('checkout/block_payment_bot/ip_whitelist', ScopeInterface::SCOPE_STORE);
+        if (empty($value)) {
+            return [];
+        }
+        
+        // Try JSON first (Magento stores as JSON), then unserialize as fallback
+        $decoded = null;
+        if (is_string($value)) {
+            $jsonDecoded = json_decode($value, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($jsonDecoded)) {
+                $decoded = $jsonDecoded;
+            } else {
+                $decoded = @unserialize($value);
+            }
+        } else {
+            $decoded = $value;
+        }
+        
+        if (empty($decoded) || !is_array($decoded)) {
+            return [];
+        }
+        $ips = [];
+        foreach ($decoded as $row) {
+            $name = trim($row['name'] ?? '');
+            $ip = trim($row['ip'] ?? '');
+            if ($ip !== '') {
+                $ips[] = [
+                    'name' => $name,
+                    'ip' => $ip
+                ];
+            }
+        }
+        return $ips;
+    }
+
+    /**
+     * Get bot rules from config
+     *
+     * @return array
+     */
+    private function getBotRules(): array
+    {
+        $rules = $this->scopeConfig->getValue('checkout/block_payment_bot/bot_rules', ScopeInterface::SCOPE_STORE);
+        if (empty($rules)) {
+            return [];
+        }
+        
+        // Try JSON first (Magento stores as JSON), then unserialize as fallback
+        $decoded = null;
+        if (is_string($rules)) {
+            $jsonDecoded = json_decode($rules, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($jsonDecoded)) {
+                $decoded = $jsonDecoded;
+            } else {
+                $decoded = @unserialize($rules);
+            }
+        } else {
+            $decoded = $rules;
+        }
+        
+        if (empty($decoded) || !is_array($decoded)) {
+            return [];
+        }
+        
+        // Convert from associative array format to indexed array
+        $result = [];
+        foreach ($decoded as $key => $rule) {
+            if (is_array($rule) && isset($rule['path'])) {
+                $result[] = $rule;
+            }
+        }
+        return $result;
     }
 }
 
