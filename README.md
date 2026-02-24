@@ -1,5 +1,7 @@
 # Mage2 Module Genaker BlockPaymentBot
 
+![BlockPaymentBot Banner](repo-banner.png)
+
 Blocks bot abuse on payment endpoints (guest-carts payment-information, totals-information). Uses Redis for counters and block state; configurable via Magento Admin or ENV variables.
 
 ## Main Functionalities
@@ -15,6 +17,8 @@ Blocks bot abuse on payment endpoints (guest-carts payment-information, totals-i
 - **Bot Rules** — Per-path regex rules with custom request count and block time (e.g. payment-information, register, contact).
 
 ## IP Blocking Logic
+
+![Blocking Logic Flowchart](blocking-logic-flowchart.png)
 
 The module uses Redis to track and block abusive requests with a dual-counter system:
 
