@@ -10,10 +10,28 @@
         <arguments>
             <argument name="commands" xsi:type="array">
                 <item name="genaker_blockbot_show_blocked_ips" xsi:type="object">Genaker\BlockPaymentBot\Console\Command\ShowBlockedIPs</item>
+                <item name="genaker_blockbot_check_db_integrity" xsi:type="object">Genaker\BlockPaymentBot\Console\Command\CheckDbIntegrity</item>
             </argument>
         </arguments>
     </type>
     <type name="Genaker\BlockPaymentBot\Console\Command\ShowBlockedIPs">
+        <arguments>
+            <argument name="scopeConfig" xsi:type="object">Magento\Framework\App\Config\ScopeConfigInterface</argument>
+        </arguments>
+    </type>
+    <type name="Genaker\BlockPaymentBot\Console\Command\CheckDbIntegrity">
+        <arguments>
+            <argument name="dbIntegrityService" xsi:type="object">Genaker\BlockPaymentBot\Service\DbIntegrityService</argument>
+        </arguments>
+    </type>
+    <type name="Genaker\BlockPaymentBot\Service\DbIntegrityService">
+        <arguments>
+            <argument name="config" xsi:type="object">Genaker\BlockPaymentBot\Model\IntegrityConfig</argument>
+            <argument name="resource" xsi:type="object">Magento\Framework\App\ResourceConnection</argument>
+            <argument name="logger" xsi:type="object">Psr\Log\LoggerInterface</argument>
+        </arguments>
+    </type>
+    <type name="Genaker\BlockPaymentBot\Model\IntegrityConfig">
         <arguments>
             <argument name="scopeConfig" xsi:type="object">Magento\Framework\App\Config\ScopeConfigInterface</argument>
         </arguments>
