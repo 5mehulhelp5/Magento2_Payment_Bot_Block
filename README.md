@@ -7,7 +7,9 @@ Blocks bot abuse on payment endpoints (guest-carts payment-information, totals-i
 - **Rate limiting** — Limit payment attempts per IP/cart within a configurable time window; block for a configurable duration when exceeded.
 - **Magento Admin config** — Enable/disable, IP whitelist, behind proxy/CDN, require form check, block time, record time, block count, per-path Bot Rules.
 - **Admin Blocked IPs page** — System → Blocked IPs: view currently blocked IPs with reason, URL, counter, expiry.
-- **CLI** — `php bin/magento genaker:blockbot:show-blocked-ips` to list blocked IPs.
+- **CLI Commands**:
+  - `php bin/magento genaker:blockbot:show-blocked-ips` — List blocked IPs and display configuration (IP whitelist, bot rules).
+  - `php bin/magento genaker:blockbot:check-db-integrity` — Scan database for suspicious content patterns (XSS, injection attempts, etc.).
 - **IP whitelist** — Whitelisted IPs are never blocked.
 - **Behind trusted proxy** — Optional use of `X-Forwarded-For`, `Fastly-Client-IP`, `CF-Connecting-IP` when enabled in config (avoids spoofing when not behind proxy).
 - **Bot Rules** — Per-path regex rules with custom request count and block time (e.g. payment-information, register, contact).
@@ -50,6 +52,39 @@ Optional: [Genaker/mage-dotenv](https://github.com/Genaker/mage-dotenv) to load 
 - **Bot Rules** — Per-path overrides (path regex, request count, block time). Examples: payment-information, register, contact.
 
 **System → Blocked IPs** — View active blocked IPs.
+
+## Database Integrity Check
+
+The module includes a database integrity scanner that checks for suspicious patterns in database content (XSS, injection attempts, etc.).
+
+### CLI Command
+
+```bash
+php bin/magento genaker:blockbot:check-db-integrity
+```
+
+This command scans the following tables by default:
+- `cms_page` (content, title fields)
+- `cms_block` (content field)
+- `core_config_data` (value field)
+
+### Detected Patterns
+
+The scanner looks for suspicious patterns such as:
+- `eval(atob(` — Base64-encoded eval attempts
+- `eval(String.fromCharCode(` — Character code-based eval
+- `eval(decodeURI(` — URI-decoded eval attempts
+- `javascript:` — JavaScript protocol URLs
+- `onerror=eval` / `onload=eval` — Event handler injection
+- `unescape(` — Unescape function usage
+
+### Configuration
+
+The tables and patterns can be configured via Magento Admin:
+- **Stores → Configuration → Checkout → Block Payment Bot → Integrity Tables Config** — JSON configuration for tables to scan
+- **Stores → Configuration → Checkout → Block Payment Bot → Integrity Patterns** — JSON configuration for regex patterns to detect
+- **Stores → Configuration → Checkout → Block Payment Bot → Integrity Recent Only** — Enable to scan only recent records
+- **Stores → Configuration → Checkout → Block Payment Bot → Integrity Recent Days** — Number of days for recent-only scan (default: 30)
 
 ## Installation
 
