@@ -17,6 +17,12 @@ use Psr\Log\LoggerInterface;
  *
  * The caller (LlmAnalyzer / MagentoAnalyzer) runs the loop and applies the
  * reflection / force-answer mechanism once consecutive tool calls exceed a threshold.
+ *
+ * Self-correction (inner monologue):
+ *  When a tool call returns an error, a focused no-tools API call is made asking
+ *  the LLM to diagnose the failure and plan a correction. The resulting reasoning
+ *  is injected into conversation history as an assistant "[Self-correction]" message
+ *  so the next iteration can use it to make a better tool call or provide a final answer.
  */
 class CliChatWithToolsService
 {
@@ -52,6 +58,15 @@ class CliChatWithToolsService
      * @var string
      */
     private string $customSystemMessage = '';
+
+    /**
+     * When true, a focused no-tools API call is made whenever a tool returns an error.
+     * The LLM's diagnosis is injected into conversation history as a "[Self-correction]"
+     * assistant message so the next iteration benefits from the analysis.
+     *
+     * @var bool
+     */
+    private bool $selfCorrectionEnabled = true;
 
     /**
      * @param AIServiceInterface $aiService
@@ -93,6 +108,15 @@ class CliChatWithToolsService
     public function setAllowDangerous(bool $allowDangerous): void
     {
         $this->allowDangerous = $allowDangerous;
+    }
+
+    /**
+     * Enable or disable self-correction inner monologue on tool errors.
+     * Disable for unit tests or when the calling code has its own error-recovery logic.
+     */
+    public function setSelfCorrectionEnabled(bool $enabled): void
+    {
+        $this->selfCorrectionEnabled = $enabled;
     }
 
     // -------------------------------------------------------------------------
@@ -293,6 +317,20 @@ class CliChatWithToolsService
         $conversationHistory[] = ['role' => 'assistant', 'content' => $historyContent['assistant']];
         $conversationHistory[] = ['role' => 'user',      'content' => $historyContent['user']];
 
+        // Self-correction inner monologue: when the tool returned an error, ask the LLM
+        // (without any tools) to diagnose the failure and plan a fix. The resulting reasoning
+        // is injected as an assistant message so the next iteration can act on it.
+        $isToolError = isset($toolResult['error']) || ($toolResult['success'] ?? true) === false;
+        if ($isToolError && $this->selfCorrectionEnabled) {
+            $correction = $this->runSelfCorrection($functionName, $arguments, $toolResult, $conversationHistory);
+            if ($correction !== null) {
+                $conversationHistory[] = [
+                    'role'    => 'assistant',
+                    'content' => "[Self-correction]:\n{$correction}",
+                ];
+            }
+        }
+
         // Next iteration: use the current question (userQuery) so the AI answers it with the new tool result.
         // Do NOT use extractOriginalQuery — it returns the first user message in history, which can be
         // a different question (e.g. "how many orders" when the current question is "what is the biggest order").
@@ -467,5 +505,82 @@ class CliChatWithToolsService
             }
         }
         return '';
+    }
+
+    // -------------------------------------------------------------------------
+    // Self-correction inner monologue
+    // -------------------------------------------------------------------------
+
+    /**
+     * Ask the LLM (without tools) to diagnose a tool error and produce a corrected plan.
+     *
+     * The response is returned as a plain string and will be injected into conversation
+     * history as an assistant "[Self-correction]" message so the next ReAct iteration
+     * can use the analysis to make a better tool call or provide a final answer.
+     *
+     * Returns null when the LLM call fails or returns nothing.
+     *
+     * @param string $toolName           Name of the tool that returned an error
+     * @param array  $arguments          Arguments passed to the failed tool call
+     * @param array  $toolResult         The error result from the tool
+     * @param array  $conversationHistory Current conversation history for context
+     */
+    private function runSelfCorrection(
+        string $toolName,
+        array $arguments,
+        array $toolResult,
+        array $conversationHistory
+    ): ?string {
+        $errorMsg  = $toolResult['error'] ?? $toolResult['message'] ?? json_encode($toolResult);
+        $argsJson  = json_encode($arguments, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+
+        $diagnosticPrompt =
+            "The tool `{$toolName}` was called with these arguments:\n"
+            . "```json\n{$argsJson}\n```\n\n"
+            . "It returned the following error:\n\"{$errorMsg}\"\n\n"
+            . "Think step by step:\n"
+            . "1. What is the root cause of this error?\n"
+            . "2. What correction is needed to the arguments or approach?\n"
+            . "3. What is the precise corrected action to take next to answer the user's question?\n\n"
+            . "Provide a concise analysis and your corrected plan as the final response.";
+
+        // System message for the inner monologue — no tool definitions to avoid recursion
+        $systemMsg = "You are a Magento 2 AI assistant performing self-correction analysis. "
+            . "Analyse tool errors step by step and output a concise, actionable correction plan. "
+            . "Do not call any tools — reason only in plain text.";
+
+        $messages = [['role' => 'system', 'content' => $systemMsg]];
+
+        // Include up to the last 6 history messages for context (avoid huge payloads)
+        foreach (array_slice($conversationHistory, -6) as $msg) {
+            $messages[] = ['role' => $msg['role'], 'content' => $msg['content']];
+        }
+
+        try {
+            $response = $this->aiService->sendChatRequest(
+                $diagnosticPrompt,
+                $messages,
+                1000,  // short — analysis only
+                0.1,   // low temperature for deterministic reasoning
+                []     // NO tools — pure inner monologue
+            );
+
+            $text = $response['message'] ?? $response['text'] ?? null;
+
+            if (!empty($text)) {
+                $this->logger->debug('[MagentoMcpAi] Self-correction completed', [
+                    'tool'     => $toolName,
+                    'preview'  => substr($text, 0, 200),
+                ]);
+            }
+
+            return $text ?: null;
+        } catch (\Exception $e) {
+            $this->logger->warning('[MagentoMcpAi] Self-correction call failed', [
+                'tool'  => $toolName,
+                'error' => $e->getMessage(),
+            ]);
+            return null;
+        }
     }
 }
