@@ -1,0 +1,179 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Config:etc/system_file.xsd">
+    <system>
+        <tab id="genaker" translate="label" sortOrder="999">
+            <label>Genaker</label>
+        </tab>
+        <section id="magentomcpai" translate="label" type="text" sortOrder="100" showInDefault="1" showInWebsite="1" showInStore="1">
+            <label>Magento MCP AI</label>
+            <tab>genaker</tab>
+            <resource>Genaker_MagentoMcpAi::config</resource>
+            <group id="general" translate="label" type="text" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>General Configuration</label>
+                <field id="enabled" translate="label" type="select" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable MCP AI</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="api_key" translate="label" type="text" sortOrder="20" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>OpenAI API Key</label>
+                    <comment>Enter your OpenAI API key</comment>
+                </field>
+                <field id="mspi_api_key" translate="label" type="text" sortOrder="30" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>MSPI API Key</label>
+                    <comment>Enter your MSPI API key for validation</comment>
+                </field>
+                <field id="model" translate="label" type="select" sortOrder="40" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Default AI Model</label>
+                    <source_model>Genaker\MagentoMcpAi\Model\Config\Source\Model</source_model>
+                    <comment><![CDATA[Shows only the latest version of each model family. Models are fetched from OpenAI API when API key is configured. Clear cache if models don't update.]]></comment>
+                </field>
+                <field id="custom_model" translate="label" type="text" sortOrder="41" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Custom Model (Override)</label>
+                    <comment>If set, this model will override the general model for all AI requests.</comment>
+                </field>
+                <field id="max_tokens" translate="label comment" type="text" sortOrder="50" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Max Tokens</label>
+                    <comment>Maximum number of tokens to generate (1-4000)</comment>
+                    <validate>validate-number validate-number-range number-range-1-4000</validate>
+                </field>
+                <field id="temperature" translate="label comment" type="text" sortOrder="60" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Temperature</label>
+                    <comment>Controls randomness (0.0-1.0). Lower is more focused, higher is more creative.</comment>
+                    <validate>validate-number validate-number-range number-range-0-1</validate>
+                </field>
+                <field id="ai_rules" translate="label" type="textarea" sortOrder="70" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>AI Rules</label>
+                    <comment>Define rules and guidelines for the AI assistant</comment>
+                    <!-- <backend_model>Magento\Config\Model\Config\Backend\Serialized\ArraySerialized</backend_model> -->
+                </field>
+                <field id="documentation" translate="label" type="textarea" sortOrder="80" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Documentation</label>
+                    <comment>Add relevant documentation and context for the AI assistant</comment>
+                </field>
+                <field id="send_magento_data_to_ai" translate="label" type="select" sortOrder="90" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Send Magento Data to AI</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>Enable or disable sending Magento data to AI. Disabled by default.</comment>
+                </field>
+                <field id="api_domain" translate="label" type="text" sortOrder="15" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>AI API Domain</label>
+                    <comment>Enter the base domain for the AI API (e.g. https://api.openai.com)</comment>
+                </field>
+                <field id="debug_mode" translate="label" type="select" sortOrder="100" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable Debug Mode</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>When enabled, logs detailed debug information for every AI service request, response, and processing step. Logs are written to var/log/system.log. Disabled by default.</comment>
+                </field>
+                <field id="max_iterations" translate="label comment" type="text" sortOrder="110" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Max Iterations (CLI)</label>
+                    <comment>Maximum number of iterations for CLI LLM command tool calling (default: 5)</comment>
+                    <validate>validate-number validate-greater-than-zero</validate>
+                </field>
+            </group>
+            <group id="chatbot" translate="label" type="text" sortOrder="20" showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>Customer Chatbot Configuration</label>
+                <field id="enabled" translate="label" type="select" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable Customer Chatbot</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="theme_type" translate="label" type="select" sortOrder="20" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Theme Type</label>
+                    <source_model>Genaker\MagentoMcpAi\Model\Config\Source\ThemeType</source_model>
+                    <comment>Select the theme implementation to use</comment>
+                </field>
+                <field id="title" translate="label" type="text" sortOrder="25" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Chatbot Title</label>
+                    <comment>Title shown in the chatbot header</comment>
+                </field>
+                <field id="welcome_message" translate="label" type="textarea" sortOrder="30" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Welcome Message</label>
+                    <comment>Initial message displayed when the chatbot opens</comment>
+                </field>
+                <field id="model" translate="label" type="select" sortOrder="40" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>AI Model for Chatbot</label>
+                    <source_model>Genaker\MagentoMcpAi\Model\Config\Source\Model</source_model>
+                    <comment>Select the AI model to use for chatbot responses</comment>
+                </field>
+                <field id="suggested_queries" translate="label" type="textarea" sortOrder="50" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Suggested Queries</label>
+                    <comment>List of suggested queries (one per line) to show in the chatbot</comment>
+                </field>
+                <field id="logo" translate="label" type="image" sortOrder="60" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Chatbot Logo</label>
+                    <backend_model>Magento\Config\Model\Config\Backend\Image</backend_model>
+                    <upload_dir config="system/filesystem/media" scope_info="1">magentomcpai/chatbot</upload_dir>
+                    <base_url type="media" scope_info="1">magentomcpai/chatbot</base_url>
+                    <comment>Logo displayed in the chatbot (recommended size: 64x64px)</comment>
+                </field>
+                <field id="faqs" translate="label" type="textarea" sortOrder="70" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Frequently Asked Questions</label>
+                    <comment>Common questions and answers to cache for the chatbot (in Q&amp;A format)</comment>
+                </field>
+                <field id="ai_rules" translate="label" type="textarea" sortOrder="80" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Customer Chatbot AI Rules</label>
+                    <comment>Define rules and guidelines specifically for the customer-facing chatbot assistant</comment>
+                </field>
+                <field id="documentation" translate="label" type="textarea" sortOrder="90" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Customer Chatbot Documentation</label>
+                    <comment>Add relevant documentation and context specifically for the customer-facing chatbot</comment>
+                </field>
+                <field id="enable_order_lookup" translate="label" type="select" sortOrder="100" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable Order Status Lookup</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>Allow customers to check their order status via chatbot using order number and email</comment>
+                </field>
+                <field id="enable_product_answers" translate="label" type="select" sortOrder="110" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable Product Question Answering</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>Allow the chatbot to answer questions about the current product on product pages</comment>
+                </field>
+                <field id="product_attribute_blacklist" translate="label" type="textarea" sortOrder="120" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Product Attribute Blacklist</label>
+                    <comment>List of product attributes that should NOT be sent to the AI (one per line). Examples: cost, wholesale_price, inventory_source, etc.</comment>
+                </field>
+                <field id="require_email" translate="label" type="select" sortOrder="130" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Require Email Before Chat</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>If enabled, customers must provide their email address before they can start chatting</comment>
+                </field>
+                <field id="email_collection_message" translate="label" type="textarea" sortOrder="140" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Email Collection Message</label>
+                    <comment>Message to display when asking for customer email</comment>
+                    <depends>
+                        <field id="require_email">1</field>
+                    </depends>
+                </field>
+                <field id="support_email" translate="label" type="text" sortOrder="150" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Support Email</label>
+                    <comment>Email address where chat transcripts will be sent (leave empty to use store's general contact email)</comment>
+                </field>
+                <field id="inactive_timeout" translate="label" type="text" sortOrder="160" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Inactive Timeout (minutes)</label>
+                    <comment>Number of minutes of inactivity before a chat is considered closed and transcript sent</comment>
+                    <validate>validate-number validate-greater-than-zero</validate>
+                </field>
+            </group>
+            <group id="menu" translate="label" type="text" sortOrder="25" showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>Menu AI (Admin Assistant)</label>
+                <field id="filter_enabled" translate="label" type="select" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable Menu Filtering</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment><![CDATA[When disabled (default): send full menu.md to AI. When enabled: filter menu by query keywords to reduce context size. Use filtering for smaller context models.]]></comment>
+                </field>
+            </group>
+            <group id="security" translate="label" type="text" sortOrder="30" showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>Security Settings</label>
+                <field id="max_query_length" translate="label comment" type="text" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Maximum Query Length</label>
+                    <comment>Maximum allowed length for SQL queries (in characters)</comment>
+                    <validate>validate-number validate-greater-than-zero</validate>
+                </field>
+                <field id="rate_limit" translate="label comment" type="text" sortOrder="20" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Rate Limit</label>
+                    <comment>Maximum number of requests per minute</comment>
+                    <validate>validate-number validate-greater-than-zero</validate>
+                </field>
+            </group>
+        </section>
+    </system>
+</config>

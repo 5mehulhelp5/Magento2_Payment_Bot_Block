@@ -1,0 +1,92 @@
+/* Chatbot styles for Hyva theme */
+.chatbot-gradient {
+    @apply bg-gradient-to-r from-red-500 to-purple-600;
+}
+
+.chatbot-button {
+    @apply flex items-center space-x-2 text-white py-3 px-6 rounded-full cursor-pointer shadow-lg hover:shadow-xl transition-all duration-300;
+}
+
+.chatbot-icon {
+    @apply flex-shrink-0 w-8 h-8 rounded-full bg-white p-1 flex items-center justify-center;
+}
+
+.chatbot-window {
+    @apply w-full max-w-md bg-white rounded-lg shadow-xl overflow-hidden;
+    max-height: 600px;
+}
+
+.chatbot-header {
+    @apply p-4 text-white flex justify-between items-center;
+}
+
+.chatbot-messages {
+    @apply h-96 overflow-y-auto p-4 bg-gray-50;
+}
+
+.chatbot-message {
+    @apply flex items-start mb-4;
+}
+
+.chatbot-message-user {
+    @apply justify-end;
+}
+
+.chatbot-bubble {
+    @apply mx-2 py-2 px-3 rounded-lg shadow max-w-xs;
+}
+
+.chatbot-bubble-bot {
+    @apply bg-white text-gray-800;
+}
+
+.chatbot-bubble-user {
+    @apply text-white;
+}
+
+.chatbot-input-container {
+    @apply p-3 bg-white border-t border-gray-200;
+}
+
+.chatbot-input {
+    @apply flex-1 py-2 px-3 bg-gray-100 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm;
+}
+
+.chatbot-send-button {
+    @apply text-white p-2 rounded-r-lg focus:outline-none hover:opacity-90 disabled:opacity-50;
+}
+
+.chatbot-suggestions {
+    @apply p-3 bg-white border-t border-gray-200;
+}
+
+.chatbot-suggestion-button {
+    @apply text-xs bg-gray-100 hover:bg-gray-200 text-gray-800 py-1 px-3 rounded-full transition-colors;
+}
+
+/* Animation keyframes for the typing indicator */
+@keyframes bounce {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-5px);
+    }
+}
+
+.chatbot-typing-dot {
+    @apply w-2 h-2 bg-gray-400 rounded-full;
+    animation: bounce 1s infinite;
+}
+
+.chatbot-typing-dot:nth-child(1) {
+    animation-delay: 0.1s;
+}
+
+.chatbot-typing-dot:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.chatbot-typing-dot:nth-child(3) {
+    animation-delay: 0.3s;
+}

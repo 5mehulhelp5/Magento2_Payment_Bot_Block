@@ -1,0 +1,631 @@
+<?php
+/**
+ * @var \Genaker\MagentoMcpAi\Block\Chatbot $block
+ */
+?>
+<?php if ($block->isEnabled()): ?>
+    <?php if ($block->isHyvaTheme()): ?>
+        <!-- Hyva Theme Implementation (Alpine.js & Tailwind CSS) -->
+        <div x-data="chatbot()" 
+             x-init="initChatbot()" 
+             class="fixed bottom-4 right-4 z-50 font-sans">
+            <!-- Chatbot Button -->
+            <div x-show="!isChatOpen" 
+                 x-transition:enter="transition ease-out duration-300"
+                 x-transition:enter-start="opacity-0 transform scale-90"
+                 x-transition:enter-end="opacity-100 transform scale-100"
+                 x-transition:leave="transition ease-in duration-300"
+                 x-transition:leave-start="opacity-100 transform scale-100"
+                 x-transition:leave-end="opacity-0 transform scale-90"
+                 @click="toggleChat()" 
+                 class="flex items-center space-x-2 bg-gradient-to-r from-red-500 to-purple-600 text-white py-3 px-6 rounded-full cursor-pointer shadow-lg hover:shadow-xl transition-all duration-300">
+                <div class="flex-shrink-0 w-8 h-8 rounded-full bg-white p-1 flex items-center justify-center">
+                    <img src="<?= $block->escapeUrl($block->getLogoUrl()) ?>" class="w-6 h-6 object-contain" alt="Chatbot">
+                </div>
+                <span class="font-medium"><?= $block->escapeHtml($block->getChatButtonText()) ?></span>
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                </svg>
+            </div>
+
+            <!-- Chat Window -->
+            <div x-show="isChatOpen" 
+                 x-transition:enter="transition ease-out duration-300"
+                 x-transition:enter-start="opacity-0 transform translate-y-4"
+                 x-transition:enter-end="opacity-100 transform translate-y-0"
+                 x-transition:leave="transition ease-in duration-200"
+                 x-transition:leave-start="opacity-100 transform translate-y-0"
+                 x-transition:leave-end="opacity-0 transform translate-y-4"
+                 class="w-full max-w-md bg-white rounded-lg shadow-xl overflow-hidden" style="max-height: 625px;">
+                
+                <!-- Chat Header -->
+                <div class="bg-gradient-to-r from-red-500 to-purple-600 p-4 text-white flex justify-between items-center">
+                    <div class="flex items-center space-x-2">
+                        <div class="w-8 h-8 rounded-full p-1 flex items-center justify-center">
+                            <img src="<?= $block->escapeUrl($block->getLogoUrl()) ?>" class="w-6 h-6 object-contain" alt="Chatbot">
+                        </div>
+                        <h3 class="font-medium"><?= $block->escapeHtml($block->getChatbotTitle()) ?></h3>
+                    </div>
+                    <button @click="toggleChat()" class="text-white hover:text-gray-200 focus:outline-none">
+                        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M6 18L18 6M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                </div>
+                
+                <!-- Chat Body -->
+                <div class="h-96 overflow-y-auto p-4 bg-gray-50" id="chat-messages" x-ref="chatMessages">
+                    <!-- Welcome Message -->
+                    <div class="flex items-start mb-4">
+                        <div class="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-r from-red-500 to-purple-600 p-1 flex items-center justify-center">
+                            <img src="<?= $block->escapeUrl($block->getLogoUrl()) ?>" class="w-6 h-6 object-contain" alt="Chatbot">
+                        </div>
+                        <div class="ml-3 bg-white rounded-lg py-2 px-4 shadow">
+                            <p class="text-sm text-gray-800"><?= $block->escapeHtml($block->getWelcomeMessage()) ?></p>
+                        </div>
+                    </div>
+                    
+                    <!-- Email Collection Form (Only if email is required and not yet submitted) -->
+                    <div x-show="emailRequired && !emailSubmitted" class="flex items-start mb-4">
+                        <div class="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-r from-red-500 to-purple-600 p-1 flex items-center justify-center">
+                            <img src="<?= $block->escapeUrl($block->getLogoUrl()) ?>" class="w-6 h-6 object-contain" alt="Chatbot">
+                        </div>
+                        <div class="ml-3 bg-white rounded-lg py-2 px-4 shadow">
+                            <p class="text-sm text-gray-800 mb-2"><?= $block->escapeHtml($block->getEmailCollectionMessage()) ?></p>
+                            <form @submit.prevent="submitEmail" class="mt-2">
+                                <div class="flex items-center">
+                                    <input 
+                                        x-model="customerEmail" 
+                                        type="email" 
+                                        placeholder="you@example.com" 
+                                        required
+                                        class="flex-1 p-2 text-sm border border-gray-300 rounded-l focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                    >
+                                    <button 
+                                        type="submit" 
+                                        class="bg-gradient-to-r from-red-500 to-purple-600 text-white py-2 px-4 rounded-r hover:opacity-90 transition-opacity focus:outline-none"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    
+                    <!-- Messages Container -->
+                    <template x-for="(message, index) in messages" :key="index">
+                        <div class="flex items-start mb-4" :class="message.isUser ? 'justify-end' : ''">
+                            <template x-if="!message.isUser">
+                                <div class="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-r from-red-500 to-purple-600 p-1 flex items-center justify-center">
+                                    <img src="<?= $block->escapeUrl($block->getLogoUrl()) ?>" class="w-6 h-6 object-contain" alt="Chatbot">
+                                </div>
+                            </template>
+                            <div class="mx-2 py-2 px-3 rounded-lg shadow max-w-xs"
+                                 :class="message.isUser ? 'bg-gradient-to-r from-red-500 to-purple-600 text-white' : 'bg-white text-gray-800'">
+                                <p class="text-sm" x-html="formatMessage(message.text)"></p>
+                            </div>
+                        </div>
+                    </template>
+                    
+                    <!-- Loading Indicator -->
+                    <div x-show="isLoading" class="flex items-start mb-4">
+                        <div class="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-r from-red-500 to-purple-600 p-1 flex items-center justify-center">
+                            <img src="<?= $block->escapeUrl($block->getLogoUrl()) ?>" class="w-6 h-6 object-contain" alt="Chatbot">
+                        </div>
+                        <div class="ml-2 py-3 px-4 bg-white rounded-lg shadow">
+                            <div class="flex space-x-1">
+                                <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0.1s"></div>
+                                <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
+                                <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0.3s"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Suggested Queries -->
+                <div x-show="showSuggestions" class="p-3 bg-white border-t border-gray-200">
+                    <p class="text-xs text-gray-500 mb-2">Suggested Questions:</p>
+                    <div class="flex flex-wrap gap-2">
+                        <?php foreach ($block->getSuggestedQueries() as $query): ?>
+                            <button @click="sendMessage(<?= $block->escapeJs(json_encode($query)) ?>)" 
+                                    class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-800 py-1 px-3 rounded-full transition-colors">
+                                <?= $block->escapeHtml($query) ?>
+                            </button>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+                
+                <!-- Chat Input -->
+                <div class="p-3 bg-white border-t border-gray-200">
+                    <form @submit.prevent="sendMessage(userInput)" class="flex" x-show="!emailRequired || emailSubmitted">
+                        <input x-model="userInput" 
+                               @keydown="resetInactivityTimer"
+                               type="text" 
+                               placeholder="Type your message..." 
+                               class="flex-1 p-2 border border-gray-300 rounded-l focus:outline-none focus:ring-2 focus:ring-purple-500" 
+                        >
+                        <button 
+                            type="submit" 
+                            :disabled="isLoading || !userInput.trim()"
+                            class="bg-gradient-to-r from-red-500 to-purple-600 text-white py-2 px-4 rounded-r hover:opacity-90 transition-opacity focus:outline-none disabled:opacity-50"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 1.414L10.586 9H7a1 1 0 100 2h3.586l-1.293 1.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414z" clip-rule="evenodd" />
+                            </svg>
+                        </button>
+                    </form>
+                </div>
+                
+                <!-- Chat Footer -->
+                <div class="px-3 py-2 bg-gray-50 text-center text-xs text-gray-500 border-t border-gray-200">
+                    <p>Virtual Assistant responses are automated, not from a real person, so it might make mistakes. Please double-check important information.</p>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            function chatbot() {
+                return {
+                    isChatOpen: false,
+                    isLoading: false,
+                    showSuggestions: true,
+                    messages: [],
+                    userInput: '',
+                    chatHistory: [],
+                    productQuestionsEnabled: <?= $block->isProductQuestionsEnabled() ? 'true' : 'false' ?>,
+                    attributeBlacklist: <?= $block->getProductAttributeBlacklistJson() ?>,
+                    emailRequired: <?= $block->isEmailRequired() ? 'true' : 'false' ?>,
+                    customerEmail: '',
+                    emailSubmitted: false,
+                    conversationId: null,
+                    inactivityTimer: null,
+                    inactiveTimeout: <?= $block->getInactiveTimeout() * 60 * 1000 ?>, // Convert minutes to milliseconds
+                    
+                    initChatbot() {
+                        // Load chat history from localStorage
+                        this.loadHistory();
+                        
+                        // Load email if previously submitted
+                        const storedEmail = localStorage.getItem('chatbot_email');
+                        if (storedEmail) {
+                            this.customerEmail = storedEmail;
+                            this.emailSubmitted = true;
+                        }
+                        
+                        // Load conversation ID if available
+                        const storedConversationId = localStorage.getItem('chatbot_conversation_id');
+                        if (storedConversationId) {
+                            this.conversationId = storedConversationId;
+                        }
+                        
+                        // Load chat window state
+                        const chatOpenState = localStorage.getItem('chatbot_is_open');
+                        if (chatOpenState === 'true') {
+                            this.isChatOpen = true;
+                            // Delay scrolling to ensure DOM is rendered
+                            setTimeout(() => {
+                                this.scrollToBottom();
+                            }, 100);
+                        }
+                        
+                        // Set inactivity timeout (in milliseconds)
+                        this.inactiveTimeout = <?= $block->getInactiveTimeout() * 60 * 1000 ?>;
+                    },
+                    
+                    toggleChat() {
+                        this.isChatOpen = !this.isChatOpen;
+                        
+                        // Store chat open state in localStorage
+                        localStorage.setItem('chatbot_is_open', this.isChatOpen.toString());
+                        
+                        if (this.isChatOpen) {
+                            // When opening chat
+                            // Reset inactivity timer
+                            this.resetInactivityTimer();
+                            
+                            // Focus input field if email already submitted
+                            if (this.emailSubmitted) {
+                                this.$nextTick(() => {
+                                    const inputField = document.querySelector('input[x-model="userInput"]');
+                                    if (inputField) inputField.focus();
+                                });
+                            }
+                            
+                            // Scroll to bottom of chat
+                            this.$nextTick(() => {
+                                this.scrollToBottom();
+                            });
+                        } else {
+                            // When closing chat
+                            this.clearInactivityTimer();
+                        }
+                    },
+                    
+                    sendMessage(query) {
+                        console.log('Form submitted with userInput:', this.userInput);
+                        console.log('userInput type:', typeof this.userInput);
+                        console.log('query parameter:', query);
+                        console.log('query parameter type:', typeof query);
+                        
+                        // Ensure query is a string and trim it
+                        query = query && typeof query === 'string' ? query.trim() : '';
+                        if (!query) return;
+                        
+                        // Don't allow sending messages if email is required but not submitted
+                        if (this.emailRequired && !this.emailSubmitted) {
+                            return;
+                        }
+                        
+                        this.addMessage(query, true);
+                        this.userInput = '';
+                        this.isLoading = true;
+                        this.showSuggestions = false;
+                        
+                        // Reset inactivity timer
+                        this.resetInactivityTimer();
+                        
+                        // Create a reference to current scope
+                        const self = this;
+                        
+                        // Get store context from PHP
+                        const storeContext = JSON.parse('<?= $block->escapeJs(json_encode($block->getStoreContext())) ?>');
+                        
+                        // Check if we're on a product page and get product info if available
+                        let currentProduct = {};
+                        if (this.productQuestionsEnabled) {
+                            if (typeof PRODUCT_INFO !== 'undefined' && PRODUCT_INFO) {
+                                currentProduct = this.filterProductAttributes(PRODUCT_INFO);
+                            } else {
+                                // Try to get product info from the page
+                                try {
+                                    let productData = document.querySelector('[data-role="priceBox"]');
+                                    if (productData) {
+                                        let productId = productData.getAttribute('data-product-id');
+                                        if (productId) {
+                                            currentProduct = {
+                                                id: productId,
+                                                name: document.querySelector('.page-title span')?.textContent || '',
+                                                price: document.querySelector('[data-price-type="finalPrice"] .price')?.textContent || '',
+                                                description: document.querySelector('.product.attribute.description .value')?.textContent || '',
+                                                attributes: {}
+                                            };
+                                            
+                                            // Try to collect product attributes
+                                            document.querySelectorAll('.product.attribute').forEach(attr => {
+                                                let label = attr.querySelector('.label');
+                                                let value = attr.querySelector('.value');
+                                                if (label && value) {
+                                                    currentProduct.attributes[label.textContent.trim().replace(':', '')] = 
+                                                        value.textContent.trim();
+                                                }
+                                            });
+                                            
+                                            // Filter blacklisted attributes
+                                            currentProduct = this.filterProductAttributes(currentProduct);
+                                        }
+                                    }
+                                } catch (e) {
+                                    console.error('Error collecting product data:', e);
+                                }
+                            }
+                        }
+                        
+                        // Add product info to store context if available
+                        if (Object.keys(currentProduct).length > 0) {
+                            storeContext.current_product = currentProduct;
+                        }
+                        
+                        // Process conversation history for context
+                        let conversationHistory = [];
+                        let conversationSummary = '';
+                        
+                        // If we have more than 10 messages, include a summary instead of full history
+                        if (this.chatHistory.length > 10) {
+                            // Get the last 5 messages
+                            const recentMessages = this.chatHistory.slice(-5);
+                            
+                            // Create a summary for older messages
+                            conversationSummary = "Previous conversation summary: ";
+                            const olderMessages = this.chatHistory.slice(0, -5);
+                            olderMessages.forEach(msg => {
+                                conversationSummary += (msg.isUser ? "User: " : "Assistant: ") + msg.text + "; ";
+                            });
+                            
+                            // Include only recent messages in the detailed history
+                            conversationHistory = recentMessages
+                                .filter(msg => msg.text !== query) // Exclude current query
+                                .map(msg => ({
+                                    role: msg.isUser ? 'user' : 'assistant',
+                                    content: msg.text
+                                }));
+                        } else {
+                            // If we have 10 or fewer messages, send them all
+                            conversationHistory = this.chatHistory
+                                .filter(msg => msg.text !== query) // Exclude current query
+                                .map(msg => ({
+                                    role: msg.isUser ? 'user' : 'assistant',
+                                    content: msg.text
+                                }));
+                        }
+                        
+                        fetch('<?= $block->getUrl('magentomcpai/chat/query') ?>', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-Requested-With': 'XMLHttpRequest'
+                            },
+                            body: JSON.stringify({
+                                query: query,
+                                context: storeContext,
+                                history: conversationHistory,
+                                summary: conversationSummary,
+                                customer_email: this.customerEmail,
+                                conversation_id: this.conversationId
+                            })
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            self.isLoading = false;
+                            if (data.success) {
+                                self.addMessage(data.message);
+                                
+                                // Save conversation ID if provided
+                                if (data.conversation_id) {
+                                    self.conversationId = data.conversation_id;
+                                    localStorage.setItem('chatbot_conversation_id', data.conversation_id);
+                                }
+                            } else {
+                                self.addMessage('Sorry, I encountered an error. Please try again later.');
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                            self.isLoading = false;
+                            self.addMessage('Sorry, I encountered an error. Please try again later.');
+                        });
+                    },
+                    
+                    sendSuggestedQuery(query) {
+                        this.sendMessage(query);
+                    },
+                    
+                    addMessage(text, isUser = false) {
+                        this.messages.push({ text, isUser });
+                        this.chatHistory.push({ text, isUser, timestamp: new Date().toISOString() });
+                        
+                        // Save to localStorage
+                        localStorage.setItem('chatbot_history', JSON.stringify(this.chatHistory.slice(-50))); // Keep last 50 messages
+                        
+                        this.$nextTick(() => {
+                            this.scrollToBottom();
+                        });
+                    },
+                    
+                    scrollToBottom() {
+                        if (this.$refs.chatMessages) {
+                            this.$refs.chatMessages.scrollTop = this.$refs.chatMessages.scrollHeight;
+                        }
+                    },
+                    
+                    formatMessage(text) {
+                        // Convert URLs to links
+                        const urlRegex = /(https?:\/\/[^\s]+)/g;
+                        return text.replace(urlRegex, url => `<a href="${url}" target="_blank" class="underline">${url}</a>`);
+                    },
+                    
+                    // Filter product attributes based on blacklist
+                    filterProductAttributes(productInfo) {
+                        if (!productInfo) return {};
+                        
+                        // Create a copy to avoid modifying the original
+                        const filteredInfo = JSON.parse(JSON.stringify(productInfo));
+                        
+                        // Filter top-level attributes
+                        this.attributeBlacklist.forEach(attribute => {
+                            if (filteredInfo[attribute] !== undefined) {
+                                delete filteredInfo[attribute];
+                            }
+                        });
+                        
+                        // Filter nested attributes if they exist
+                        if (filteredInfo.attributes && typeof filteredInfo.attributes === 'object') {
+                            this.attributeBlacklist.forEach(attribute => {
+                                if (filteredInfo.attributes[attribute] !== undefined) {
+                                    delete filteredInfo.attributes[attribute];
+                                }
+                            });
+                        }
+                        
+                        return filteredInfo;
+                    },
+                    
+                    // Submit customer email
+                    submitEmail() {
+                        if (!this.customerEmail.trim() || !this.validateEmail(this.customerEmail)) {
+                            return;
+                        }
+                        
+                        this.isLoading = true;
+                        
+                        // Create a reference to current scope
+                        const self = this;
+                        
+                        // Get store context
+                        const storeContext = JSON.parse('<?= $block->escapeJs(json_encode($block->getStoreContext())) ?>');
+                        
+                        // Call backend to create a new conversation
+                        fetch('<?= $block->getUrl('magentomcpai/chat/register') ?>', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-Requested-With': 'XMLHttpRequest'
+                            },
+                            body: JSON.stringify({
+                                email: this.customerEmail,
+                                store_id: storeContext.store_id || 0
+                            })
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            self.isLoading = false;
+                            
+                            if (data.success) {
+                                // Save email and conversation ID
+                                self.emailSubmitted = true;
+                                localStorage.setItem('chatbot_email', self.customerEmail);
+                                
+                                if (data.conversation_id) {
+                                    self.conversationId = data.conversation_id;
+                                    localStorage.setItem('chatbot_conversation_id', data.conversation_id);
+                                }
+                                
+                                // Add confirmation message
+                                self.addMessage(`Thank you! Your email ${self.customerEmail} has been registered. How can I help you today?`, false);
+                                
+                                // Start inactivity timer
+                                self.resetInactivityTimer();
+                            } else {
+                                // Show error
+                                self.addMessage('Sorry, I encountered an error registering your email. Please try again.', false);
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                            self.isLoading = false;
+                            self.addMessage('Sorry, I encountered an error registering your email. Please try again.', false);
+                        });
+                    },
+                    
+                    // Validate email format
+                    validateEmail(email) {
+                        const re = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+                        return re.test(email);
+                    },
+                    
+                    // Reset inactivity timer
+                    resetInactivityTimer() {
+                        this.clearInactivityTimer();
+                        
+                        // Only set timer if chat is open, email is submitted, and we have a conversation ID
+                        if (this.isChatOpen && this.emailSubmitted && this.conversationId) {
+                            this.inactivityTimer = setTimeout(() => {
+                                // Notify the server about inactivity
+                                this.handleInactivity();
+                            }, this.inactiveTimeout);
+                        }
+                    },
+                    
+                    // Clear inactivity timer
+                    clearInactivityTimer() {
+                        if (this.inactivityTimer) {
+                            clearTimeout(this.inactivityTimer);
+                            this.inactivityTimer = null;
+                        }
+                    },
+                    
+                    // Handle customer inactivity
+                    handleInactivity() {
+                        // Only proceed if we have a conversation ID
+                        if (!this.conversationId) return;
+                        
+                        fetch('<?= $block->getUrl('magentomcpai/chat/inactive') ?>', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-Requested-With': 'XMLHttpRequest'
+                            },
+                            body: JSON.stringify({
+                                conversation_id: this.conversationId
+                            })
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                // Add inactivity message if chat is still open
+                                if (this.isChatOpen) {
+                                    this.addMessage('Our chat session has ended due to inactivity. A transcript has been sent to our support team. Feel free to start a new conversation if you need further assistance.', false);
+                                }
+                                
+                                // Clear conversation ID and chat history
+                                this.conversationId = null;
+                                localStorage.removeItem('chatbot_conversation_id');
+                                
+                                // Don't clear email - it can be reused for new conversations
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error marking conversation as inactive:', error);
+                        });
+                    },
+                    
+                    loadHistory() {
+                        const savedHistory = localStorage.getItem('chatbot_history');
+                        if (savedHistory) {
+                            try {
+                                this.chatHistory = JSON.parse(savedHistory);
+                                
+                                // Populate messages array from chat history for display
+                                this.messages = this.chatHistory.map(item => ({
+                                    text: item.text,
+                                    isUser: item.isUser
+                                }));
+                                
+                                // Scroll to bottom if chat is open (needed after repopulating messages)
+                                if (this.isChatOpen) {
+                                    this.$nextTick(() => {
+                                        this.scrollToBottom();
+                                    });
+                                }
+                            } catch (e) {
+                                console.error('Error loading chat history:', e);
+                                this.chatHistory = [];
+                                this.messages = [];
+                            }
+                        }
+                    },
+                }
+            }
+        </script>
+    <?php else: ?>
+        <!-- Standard Magento Implementation (KnockoutJS) -->
+        <div id="customer-chatbot-container" data-bind="scope: 'chatbot'">
+            <!-- ko template: getTemplate() --><!-- /ko -->
+        </div>
+
+        <script type="text/x-magento-init">
+        {
+            "#customer-chatbot-container": {
+                "Magento_Ui/js/core/app": {
+                    "components": {
+                        "chatbot": {
+                            "component": "Genaker_MagentoMcpAi/js/chatbot",
+                            "template": "Genaker_MagentoMcpAi/chatbot",
+                            "config": {
+                                "logoUrl": "<?= $block->escapeJs($block->getLogoUrl()) ?>",
+                                "title": "<?= $block->escapeJs($block->getChatbotTitle()) ?>",
+                                "welcomeMessage": "<?= $block->escapeJs($block->getWelcomeMessage()) ?>",
+                                "buttonText": "<?= $block->escapeJs($block->getChatButtonText()) ?>",
+                                "suggestedQueries": <?= $block->getSuggestedQueriesJson() ?>,
+                                "storeContext": <?= $block->getStoreContextJson() ?>,
+                                "apiUrl": "<?= $block->escapeJs($block->getUrl('magentomcpai/chat/query')) ?>",
+                                "registerUrl": "<?= $block->escapeJs($block->getUrl('magentomcpai/chat/register')) ?>",
+                                "inactiveUrl": "<?= $block->escapeJs($block->getUrl('magentomcpai/chat/inactive')) ?>",
+                                "productPageDetection": true,
+                                "productQuestionsEnabled": <?= $block->isProductQuestionsEnabled() ? 'true' : 'false' ?>,
+                                "attributeBlacklist": <?= $block->getProductAttributeBlacklistJson() ?>,
+                                "emailRequired": <?= $block->isEmailRequired() ? 'true' : 'false' ?>,
+                                "emailCollectionMessage": "<?= $block->escapeJs($block->getEmailCollectionMessage()) ?>",
+                                "inactiveTimeout": <?= $block->getInactiveTimeout() * 60 * 1000 ?>
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        </script>
+
+        <link rel="stylesheet" type="text/css" media="all" href="<?= $block->getViewFileUrl('Genaker_MagentoMcpAi::css/chatbot-standard.css') ?>" />
+    <?php endif; ?>
+<?php endif; ?>

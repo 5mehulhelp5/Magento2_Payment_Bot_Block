@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <head>
+        <title>Magento MCP AI Assistant</title>
+        <!--<css src="Genaker_MagentoMcpAi::css/chat.css"/>-->
+    </head>
+    <body>
+        <referenceContainer name="content">
+            <block name="magentomcpai_chat" cacheable="false"
+                   template="Genaker_MagentoMcpAi::chat.phtml" 
+                   class="Genaker\MagentoMcpAi\Block\Adminhtml\Chat"/>
+        </referenceContainer>
+    </body>
+</page> 

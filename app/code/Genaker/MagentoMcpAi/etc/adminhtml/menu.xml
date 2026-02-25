@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Backend:etc/menu.xsd">
+    <menu>
+        <add id="Genaker_MagentoMcpAi::ai_assistant" 
+             title="AI Assistant" 
+             module="Genaker_MagentoMcpAi" 
+             sortOrder="100" 
+             parent="Magento_Backend::marketing" 
+             resource="Genaker_MagentoMcpAi::ai_assistant"/>
+             
+        <add id="Genaker_MagentoMcpAi::mcpai"
+             title="MCP AI Assistant"
+             module="Genaker_MagentoMcpAi"
+             sortOrder="10"
+             parent="Genaker_MagentoMcpAi::ai_assistant"
+             action="magentomcpai/chat/index"
+             resource="Genaker_MagentoMcpAi::mcpai"/>
+             
+        <add id="Genaker_MagentoMcpAi::chatbot_conversations"
+             title="Chatbot Conversations"
+             module="Genaker_MagentoMcpAi"
+             sortOrder="20"
+             parent="Genaker_MagentoMcpAi::ai_assistant"
+             action="magentomcpai/conversation/index"
+             resource="Genaker_MagentoMcpAi::chatbot_conversations"/>
+        <add id="Genaker_MagentoMcpAi::product_chat"
+             title="Product Chat"
+             module="Genaker_MagentoMcpAi"
+             sortOrder="30"
+             parent="Genaker_MagentoMcpAi::ai_assistant"
+             action="magentomcpai/productchat/index"
+             resource="Genaker_MagentoMcpAi::mcpai"/>
+    </menu>
+</config>

@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <body>
+        <referenceContainer name="content">
+            <block class="Genaker\MagentoMcpAi\Block\Adminhtml\Conversation\View" name="conversation_view" template="Genaker_MagentoMcpAi::conversation/view.phtml">
+                <block class="Magento\Backend\Block\Widget\Button" name="send_transcript">
+                    <arguments>
+                        <argument name="label" xsi:type="string" translate="true">Send Transcript</argument>
+                        <argument name="class" xsi:type="string">primary</argument>
+                        <argument name="id" xsi:type="string">send_transcript</argument>
+                    </arguments>
+                </block>
+                <block class="Magento\Backend\Block\Widget\Button" name="back_button">
+                    <arguments>
+                        <argument name="label" xsi:type="string" translate="true">Back</argument>
+                        <argument name="onclick" xsi:type="string">setLocation(window.location.href.replace(/view.*/, 'index/'))</argument>
+                        <argument name="class" xsi:type="string">back</argument>
+                    </arguments>
+                </block>
+            </block>
+        </referenceContainer>
+    </body>
+</page>

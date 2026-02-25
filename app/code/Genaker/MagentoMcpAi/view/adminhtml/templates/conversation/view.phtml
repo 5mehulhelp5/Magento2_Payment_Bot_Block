@@ -1,0 +1,149 @@
+<?php
+/**
+ * @var \Genaker\MagentoMcpAi\Block\Adminhtml\Conversation\View $block
+ */
+$conversation = $block->getConversation();
+$messages = $block->getMessages();
+?>
+
+<div class="conversation-view">
+    <div class="page-main-actions">
+        <div class="page-actions">
+            <div class="page-actions-buttons">
+                <?php if (!$block->isTranscriptSent()): ?>
+                    <button id="send_transcript" class="action-default primary" 
+                            onclick="location.href='<?= $block->escapeUrl($block->getSendTranscriptUrl()) ?>'">
+                        <span><?= $block->escapeHtml(__('Send Transcript')) ?></span>
+                    </button>
+                <?php endif; ?>
+                <button id="back" class="action-default back" 
+                        onclick="location.href='<?= $block->escapeUrl($block->getBackUrl()) ?>'">
+                    <span><?= $block->escapeHtml(__('Back')) ?></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="admin__fieldset-wrapper">
+        <div class="admin__fieldset-wrapper-title">
+            <strong class="title"><?= $block->escapeHtml(__('Conversation Information')) ?></strong>
+        </div>
+        <div class="admin__fieldset">
+            <div class="admin__field">
+                <label class="admin__field-label"><?= $block->escapeHtml(__('ID')) ?></label>
+                <div class="admin__field-control">
+                    <span>#<?= $block->escapeHtml($conversation->getId()) ?></span>
+                </div>
+            </div>
+            <div class="admin__field">
+                <label class="admin__field-label"><?= $block->escapeHtml(__('Customer Email')) ?></label>
+                <div class="admin__field-control">
+                    <span><?= $block->escapeHtml($conversation->getCustomerEmail()) ?></span>
+                </div>
+            </div>
+            <div class="admin__field">
+                <label class="admin__field-label"><?= $block->escapeHtml(__('Status')) ?></label>
+                <div class="admin__field-control">
+                    <span>
+                        <?php if ($conversation->getStatus() == \Genaker\MagentoMcpAi\Model\Conversation::STATUS_ACTIVE): ?>
+                            <span class="grid-severity-notice"><span><?= $block->escapeHtml(__('Active')) ?></span></span>
+                        <?php elseif ($conversation->getStatus() == \Genaker\MagentoMcpAi\Model\Conversation::STATUS_INACTIVE): ?>
+                            <span class="grid-severity-minor"><span><?= $block->escapeHtml(__('Inactive')) ?></span></span>
+                        <?php else: ?>
+                            <span class="grid-severity-critical"><span><?= $block->escapeHtml(__('Closed')) ?></span></span>
+                        <?php endif; ?>
+                    </span>
+                </div>
+            </div>
+            <div class="admin__field">
+                <label class="admin__field-label"><?= $block->escapeHtml(__('Started')) ?></label>
+                <div class="admin__field-control">
+                    <span><?= $block->escapeHtml($block->formatDate($conversation->getStartedAt())) ?></span>
+                </div>
+            </div>
+            <div class="admin__field">
+                <label class="admin__field-label"><?= $block->escapeHtml(__('Last Activity')) ?></label>
+                <div class="admin__field-control">
+                    <span><?= $block->escapeHtml($block->formatDate($conversation->getLastActivityAt())) ?></span>
+                </div>
+            </div>
+            <div class="admin__field">
+                <label class="admin__field-label"><?= $block->escapeHtml(__('Transcript Sent')) ?></label>
+                <div class="admin__field-control">
+                    <span><?= $block->escapeHtml($conversation->getTranscriptSent() ? __('Yes') : __('No')) ?></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="admin__fieldset-wrapper">
+        <div class="admin__fieldset-wrapper-title">
+            <strong class="title"><?= $block->escapeHtml(__('Conversation Transcript')) ?></strong>
+        </div>
+        <div class="conversation-messages">
+            <?php if (empty($messages)): ?>
+                <div class="message info empty">
+                    <span><?= $block->escapeHtml(__('No messages found in this conversation.')) ?></span>
+                </div>
+            <?php else: ?>
+                <?php foreach ($messages as $message): ?>
+                    <div class="message-item <?= $message['is_from_customer'] ? 'customer' : 'bot' ?>">
+                        <div class="message-meta">
+                            <span class="message-sender">
+                                <?= $block->escapeHtml($message['is_from_customer'] ? __('Customer') : __('AI Assistant')) ?>
+                            </span>
+                            <span class="message-time">
+                                <?= $block->escapeHtml($block->formatDate($message['timestamp'])) ?>
+                            </span>
+                        </div>
+                        <div class="message-content">
+                            <?= nl2br($block->escapeHtml($message['content'])) ?>
+                        </div>
+                        <?php if (isset($message['tokens_used']) && $message['tokens_used']): ?>
+                            <div class="message-tokens">
+                                <?= $block->escapeHtml(__('Tokens used: %1', $message['tokens_used'])) ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+    </div>
+</div>
+
+<style>
+    .conversation-messages {
+        max-width: 800px;
+        margin: 20px 0;
+    }
+    .message-item {
+        margin-bottom: 15px;
+        padding: 10px 15px;
+        border-radius: 5px;
+        position: relative;
+    }
+    .message-item.customer {
+        background-color: #f5f5f5;
+        margin-left: 20px;
+    }
+    .message-item.bot {
+        background-color: #e8f4fd;
+        margin-right: 20px;
+    }
+    .message-meta {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 5px;
+        font-size: 12px;
+        color: #666;
+    }
+    .message-content {
+        white-space: pre-wrap;
+    }
+    .message-tokens {
+        font-size: 11px;
+        color: #999;
+        margin-top: 5px;
+        text-align: right;
+    }
+</style>

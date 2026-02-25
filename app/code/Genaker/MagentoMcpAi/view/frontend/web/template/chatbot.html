@@ -1,0 +1,103 @@
+<!-- Chatbot Button -->
+<div data-bind="visible: !isChatOpen()" class="chatbot-button-container">
+    <div data-bind="click: toggleChat" class="chatbot-button">
+        <div class="chatbot-icon">
+            <img data-bind="attr: { src: logoUrl }" class="chatbot-logo" alt="Chatbot">
+        </div>
+        <span class="chatbot-button-text" data-bind="text: buttonText"></span>
+        <svg xmlns="http://www.w3.org/2000/svg" class="chatbot-button-icon" viewBox="0 0 24 24">
+            <path d="M19 9l-7 7-7-7" />
+        </svg>
+    </div>
+</div>
+
+<!-- Chat Window -->
+<div data-bind="visible: isChatOpen()" class="chatbot-window">
+    <!-- Chat Header -->
+    <div class="chatbot-header">
+        <div class="chatbot-header-info">
+            <div class="chatbot-icon">
+                <img data-bind="attr: { src: logoUrl }" class="chatbot-logo" alt="Chatbot">
+            </div>
+            <h3 class="chatbot-title" data-bind="text: title"></h3>
+        </div>
+        <button data-bind="click: toggleChat" class="chatbot-close-button">
+            <svg class="chatbot-close-icon" viewBox="0 0 24 24">
+                <path d="M6 18L18 6M6 6L18 18" />
+            </svg>
+        </button>
+    </div>
+    
+    <!-- Chat Body -->
+    <div class="chatbot-messages" id="chat-messages">
+        <!-- Welcome Message -->
+        <div class="chatbot-message">
+            <div class="chatbot-icon">
+                <img data-bind="attr: { src: logoUrl }" class="chatbot-logo" alt="Chatbot">
+            </div>
+            <div class="chatbot-bubble chatbot-bubble-bot">
+                <p data-bind="text: welcomeMessage"></p>
+            </div>
+        </div>
+        
+        <!-- Messages -->
+        <!-- ko foreach: messages -->
+            <div data-bind="css: { 'chatbot-message': true, 'chatbot-message-user': isUser }">
+                <!-- ko ifnot: isUser -->
+                <div class="chatbot-icon">
+                    <img data-bind="attr: { src: $parent.logoUrl }" class="chatbot-logo" alt="Chatbot">
+                </div>
+                <!-- /ko -->
+                <div data-bind="css: { 'chatbot-bubble': true, 'chatbot-bubble-bot': !isUser, 'chatbot-bubble-user': isUser }">
+                    <p data-bind="html: $parent.formatMessage(text)"></p>
+                </div>
+            </div>
+        <!-- /ko -->
+        
+        <!-- Loading Indicator -->
+        <div data-bind="visible: isLoading" class="chatbot-message">
+            <div class="chatbot-icon">
+                <img data-bind="attr: { src: logoUrl }" class="chatbot-logo" alt="Chatbot">
+            </div>
+            <div class="chatbot-bubble chatbot-bubble-bot chatbot-typing">
+                <div class="chatbot-typing-dots">
+                    <div class="chatbot-typing-dot"></div>
+                    <div class="chatbot-typing-dot"></div>
+                    <div class="chatbot-typing-dot"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Suggested Queries -->
+    <div data-bind="visible: showSuggestions" class="chatbot-suggestions">
+        <p class="chatbot-suggestions-title" data-translate="'Suggested Questions:'"></p>
+        <div class="chatbot-suggestions-container">
+            <!-- ko foreach: suggestedQueries -->
+                <button data-bind="text: $data, click: function() { $parent.sendSuggestedQuery($data) }" class="chatbot-suggestion-button"></button>
+            <!-- /ko -->
+        </div>
+    </div>
+    
+    <!-- Chat Input -->
+    <div class="chatbot-input-container">
+        <form data-bind="submit: sendMessage" class="chatbot-form">
+            <input data-bind="value: userInput, enable: !isLoading()" 
+                   type="text" 
+                   placeholder="Ask me anything" 
+                   class="chatbot-input">
+            <button type="submit" 
+                    class="chatbot-send-button"
+                    data-bind="enable: userInput().trim() !== '' && !isLoading()">
+                <svg class="chatbot-send-icon" viewBox="0 0 24 24">
+                    <path d="M5 12H19M19 12L13 6M19 12L13 18" />
+                </svg>
+            </button>
+        </form>
+    </div>
+    
+    <!-- Chat Footer -->
+    <div class="chatbot-footer">
+        <p class="chatbot-footer-text" data-translate="'Virtual Assistant responses are automated, not from a real person, so it might make mistakes. Please double-check important information.'"></p>
+    </div>
+</div>

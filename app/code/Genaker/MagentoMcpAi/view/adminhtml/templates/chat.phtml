@@ -1,0 +1,87 @@
+<?php
+/** @var \Genaker\MagentoMcpAi\Block\Adminhtml\Chat $block */
+$iframeUrl = $block->getUrl('magentomcpai/chat/iframe');
+$apiKey = $block->getApiKey();
+?>
+<div class="mcpai-container">
+    <div class="chat-header">
+        <h2>Magento MCP AI Assistant</h2>
+        <p class="chat-description">Ask questions about your Magento data in natural language.</p>
+        <button class="open-new-window" onclick="window.open('<?= $block->escapeUrl($iframeUrl) ?>', '_blank', 'width=1200,height=800,location=no,menubar=no,toolbar=no,status=no')">
+            <i class="fas fa-external-link-alt"></i> Open in New Window
+        </button>
+    </div>
+
+    <?php if (!$apiKey): ?>
+        <div class="message message-warning">
+            Please configure your OpenAI API key in System > Configuration > Genaker > Magento MCP AI
+        </div>
+    <?php endif; ?>
+
+    <iframe id="mcpai-iframe" 
+        src="<?= $block->escapeUrl($iframeUrl) ?>" 
+        width="100%" 
+        height="800px" 
+        frameborder="0">
+    </iframe>
+</div>
+
+<style>
+.mcpai-container {
+    max-width: 1200px;
+    margin: 20px auto;
+    padding: 20px;
+    background: #fff;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.chat-header {
+    margin-bottom: 20px;
+    text-align: center;
+    position: relative;
+}
+
+.chat-description {
+    color: #666;
+    font-size: 14px;
+    margin-top: 8px;
+}
+
+#mcpai-iframe {
+    border: 1px solid #e3e3e3;
+    border-radius: 4px;
+}
+
+.message-warning {
+    background: #fdf0d5;
+    border: 1px solid #6f4400;
+    color: #6f4400;
+    padding: 12px;
+    margin: 10px 0;
+    border-radius: 4px;
+}
+
+.open-new-window {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: #1979c3;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.open-new-window:hover {
+    background: #166ab4;
+}
+
+.open-new-window i {
+    font-size: 14px;
+}
+</style> 

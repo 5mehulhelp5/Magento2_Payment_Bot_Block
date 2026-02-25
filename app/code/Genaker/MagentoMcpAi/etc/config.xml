@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
+    <default>
+        <magentomcpai>
+            <general>
+                <enabled>1</enabled>
+                <api_key></api_key>
+                <mspi_api_key></mspi_api_key>
+                <api_domain>https://api.openai.com</api_domain>
+                <model>gpt-5-nano</model>
+                <custom_model></custom_model>
+                <max_tokens>500</max_tokens>
+                <temperature>0.7</temperature>
+                <debug_mode>0</debug_mode>
+                <max_iterations>5</max_iterations>
+            </general>
+            <menu>
+                <filter_enabled>0</filter_enabled>
+            </menu>
+            <security>
+                <max_query_length>1000</max_query_length>
+                <rate_limit>60</rate_limit>
+            </security>
+            <send_magento_data_to_ai>0</send_magento_data_to_ai>
+        </magentomcpai>
+    </default>
+</config> 

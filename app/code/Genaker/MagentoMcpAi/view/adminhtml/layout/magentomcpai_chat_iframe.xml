@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" layout="empty" xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <update handle="empty"/>
+    <head>
+        <remove src="*"/>
+        <title>Magento MCP AI</title>
+    </head>
+    <body>
+        <!-- Remove all default structure -->
+        <referenceBlock name="menu" remove="true"/>
+        <referenceBlock name="header" remove="true"/>
+        <referenceBlock name="footer" remove="true"/>
+        <referenceBlock name="head.additional" remove="true"/>
+        <referenceContainer name="global.notices" remove="true"/>
+        <referenceContainer name="notices.wrapper" remove="true"/>
+        <referenceContainer name="header.container" remove="true"/>
+        <referenceContainer name="page.menu" remove="true"/>
+        <referenceContainer name="page.wrapper" remove="true"/>
+        <referenceContainer name="page.messages" remove="true"/>
+        <referenceContainer name="page.main.actions" remove="true"/>
+        <referenceContainer name="footer" remove="true"/>
+
+        <!-- Define our own basic content container -->
+        <container name="root" htmlTag="div" htmlClass="mcpai-iframe-root">
+            <block name="magentomcpai_iframe" 
+                cacheable="false"
+                template="Genaker_MagentoMcpAi::iframe.phtml"
+                class="Genaker\MagentoMcpAi\Block\Adminhtml\Chat"/>
+        </container>
+    </body>
+</page> 

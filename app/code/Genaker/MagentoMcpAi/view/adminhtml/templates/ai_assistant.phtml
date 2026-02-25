@@ -1,0 +1,559 @@
+<?php
+/** @var Genaker\MagentoMcpAi\Block\Adminhtml\AIAssistant $block */
+
+if (!$block->isAllowed()) {
+    return;
+}
+
+// Get the ObjectManager instance
+$objectManager = \Magento\Framework\App\ObjectManager::getInstance();
+
+// Get the admin URL builder and helper
+$backendHelper = $objectManager->create('Magento\Backend\Helper\Data');
+$urlBuilder = $objectManager->get('Magento\Backend\Model\UrlInterface');
+
+// Get the admin base URL
+$adminBaseUrl = $backendHelper->getHomePageUrl();
+?>
+<style>
+.ai-assistant-container {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 8px;
+    padding: 20px;
+    margin: 15px 0;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    position: relative;
+    overflow: hidden;
+}
+
+.ai-assistant-container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #667eea, #764ba2, #f093fb);
+    animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+.ai-assistant-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    color: #ffffff;
+}
+
+.ai-assistant-header h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.ai-assistant-header h2::before {
+    content: '🤖';
+    font-size: 24px;
+}
+
+.ai-assistant-form {
+    display: flex;
+    gap: 10px;
+    align-items: stretch;
+    margin-bottom: 16px;
+}
+
+.ai-query-input {
+    flex: 1;
+    padding: 12px 16px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.95);
+    font-size: 14px;
+    color: #333;
+    transition: all 0.3s ease;
+    outline: none;
+}
+
+.ai-query-input:focus {
+    border-color: #ffffff;
+    background: #ffffff;
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.2);
+}
+
+.ai-query-input::placeholder {
+    color: #999;
+}
+
+.ai-query-input:disabled {
+    background-color: #f5f5f5;
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.ai-send-button {
+    padding: 12px 24px;
+    background: #ffffff;
+    color: #667eea;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.ai-send-button:hover:not(:disabled) {
+    background: #f8f9fa;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.ai-send-button:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.ai-send-button:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+    background: #e9ecef;
+    color: #6c757d;
+}
+
+.ai-loading-button {
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.6;
+    }
+}
+
+.ai-response-container {
+    margin-top: 16px;
+    animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.ai-response-content {
+    background: #ffffff;
+    border-radius: 6px;
+    padding: 16px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    line-height: 1.6;
+    color: #333;
+}
+
+.ai-response-header {
+    font-weight: 600;
+    color: #667eea;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.ai-response-text {
+    color: #34495e;
+    line-height: 1.7;
+}
+
+.ai-response-text a {
+    color: #667eea;
+    text-decoration: none;
+    font-weight: 500;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.2s;
+}
+
+.ai-response-text a:hover {
+    border-bottom-color: #667eea;
+}
+
+.ai-response-text code {
+    background: #f4f4f4;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    color: #e83e8c;
+}
+
+.ai-response-text strong {
+    color: #2c3e50;
+    font-weight: 600;
+}
+
+.ai-response-text h2 {
+    margin-top: 20px;
+    margin-bottom: 10px;
+    color: #667eea;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.ai-response-text h3 {
+    margin-top: 16px;
+    margin-bottom: 8px;
+    color: #667eea;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.ai-response-text ul,
+.ai-response-text ol {
+    margin: 12px 0;
+    padding-left: 24px;
+}
+
+.ai-response-text li {
+    margin-bottom: 6px;
+    line-height: 1.6;
+}
+
+.ai-response-url {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #e9ecef;
+}
+
+.ai-response-url a {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #667eea;
+    text-decoration: none;
+    font-weight: 500;
+    padding: 8px 12px;
+    background: #f8f9fa;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.ai-response-url a:hover {
+    background: #e9ecef;
+    transform: translateX(2px);
+}
+
+.ai-loading-spinner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 30px;
+    color: #ffffff;
+}
+
+.ai-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid rgba(255, 255, 255, 0.3);
+    border-top-color: #ffffff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 12px;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.ai-loading-text {
+    font-size: 14px;
+    opacity: 0.9;
+}
+
+.ai-error-container {
+    background: #fff5f5;
+    border: 2px solid #fc8181;
+    border-radius: 6px;
+    padding: 16px;
+    margin-top: 16px;
+    animation: shake 0.5s ease-in-out;
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
+}
+
+.ai-error-header {
+    font-weight: 600;
+    color: #c53030;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 15px;
+}
+
+.ai-error-message {
+    color: #742a2a;
+    margin-bottom: 12px;
+    line-height: 1.6;
+}
+
+.ai-error-tips {
+    font-size: 13px;
+    color: #744210;
+    background: #fffbf0;
+    border: 1px solid #f6e05e;
+    padding: 12px;
+    border-radius: 4px;
+    margin-top: 12px;
+}
+
+.ai-error-tips strong {
+    display: block;
+    margin-bottom: 6px;
+    color: #744210;
+}
+
+.ai-error-tips ul {
+    margin: 6px 0 0 0;
+    padding-left: 20px;
+}
+
+.ai-error-tips li {
+    margin-bottom: 4px;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .ai-assistant-form {
+        flex-direction: column;
+    }
+    
+    .ai-send-button {
+        width: 100%;
+        justify-content: center;
+    }
+}
+</style>
+<div class="ai-assistant-container">
+    <div class="ai-assistant-header">
+        <h2>AI Admin Assistant</h2>
+    </div>
+    <form id="ai-assistant-form" class="ai-assistant-form">
+        <input 
+            type="text" 
+            name="query" 
+            id="ai-query" 
+            class="ai-query-input"
+            placeholder="Ask me anything about your Magento store..." 
+            required 
+            autocomplete="off" 
+        />
+        <button type="button" id="send-query" class="ai-send-button">
+            <span class="button-text">💭 Think</span>
+        </button>
+    </form>
+    <div id="ai-response" class="ai-response-container"></div>
+</div>
+<script type="text/javascript">
+    document.addEventListener('DOMContentLoaded', function() {
+        var form = document.getElementById('ai-assistant-form');
+        var queryInput = document.getElementById('ai-query');
+        var sendButton = document.getElementById('send-query');
+
+        // Prevent form submission on Enter key press
+        form.addEventListener('submit', function(event) {
+            event.preventDefault();
+        });
+
+        // Add event listener for Enter key on the input field
+        queryInput.addEventListener('keydown', function(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                sendButton.click();
+            }
+        });
+
+        // Get the full admin URL including the admin path
+        var baseUrl = '<?= $block->getBaseUrl() ?>';
+        var adminUrl = '<?= $adminBaseUrl ?>';
+        var apiUrl = baseUrl + 'rest/V1/menuai/query';
+
+        sendButton.addEventListener('click', function() {
+            var userQuery = queryInput.value.trim();
+            
+            if (!userQuery) {
+                return;
+            }
+            
+            var apiKey = '<?= $block->escapeHtml($block->getApiKey()) ?>';
+
+            // Show loading state on button
+            var buttonTextSpan = sendButton.querySelector('.button-text');
+            var originalButtonText = buttonTextSpan.textContent;
+            buttonTextSpan.textContent = '⏳ Thinking...';
+            sendButton.disabled = true;
+            sendButton.classList.add('ai-loading-button');
+            queryInput.disabled = true;
+
+            fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ userQuery: userQuery, api_key: apiKey })
+            })
+            .then(response => {
+                // Show loading state
+                document.getElementById('ai-response').innerHTML = `
+                    <div class="ai-loading-spinner">
+                        <div class="ai-spinner"></div>
+                        <div class="ai-loading-text">Processing your request...</div>
+                    </div>
+                `;
+                
+                // Check for HTTP errors
+                if (!response.ok) {
+                    if (response.status === 500) {
+                        throw new Error(`Server Error (500): Internal server error occurred. Please check server logs.`);
+                    } else if (response.status === 404) {
+                        throw new Error(`Not Found (404): API endpoint not found.`);
+                    } else if (response.status === 403) {
+                        throw new Error(`Forbidden (403): Access denied. Check API permissions.`);
+                    } else if (response.status === 401) {
+                        throw new Error(`Unauthorized (401): Invalid API key or authentication failed.`);
+                    } else {
+                        throw new Error(`HTTP Error (${response.status}): ${response.statusText}`);
+                    }
+                }
+                
+                return response.json();
+            })
+            .then(data => {
+                // Restore button state
+                sendButton.querySelector('.button-text').textContent = originalButtonText;
+                sendButton.disabled = false;
+                sendButton.classList.remove('ai-loading-button');
+                queryInput.disabled = false;
+                
+                // Clear input field after successful response
+                queryInput.value = '';
+                
+                // Process the response
+                var responseText = data[0];
+                var responseUrl = data[1];
+                var responseHash = data[2];
+                if(responseHash){
+                    responseHash = "#" + responseHash;
+                } else {
+                    responseHash = "";
+                }
+                
+                // Transform markdown-like patterns to HTML
+                var processedText = responseText
+                    .replace(/\[\[(.*?)\]\]\((.*?)\)/g, '<a href="$2" target="_blank">🔗 $1</a>')
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                    .replace(/`(.*?)`/g, '<code>$1</code>')
+                    .replace(/^### (.*$)/gm, '<h3>$1</h3>')
+                    .replace(/^## (.*$)/gm, '<h2>$1</h2>');
+                
+                // Handle lists - wrap consecutive list items in ul
+                processedText = processedText.replace(/^[-•] (.+)$/gm, '<li>$1</li>');
+                processedText = processedText.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+                
+                // Wrap consecutive <li> tags in <ul>
+                processedText = processedText.replace(/(<li>.*?<\/li>(?:\s*<li>.*?<\/li>)*)/g, function(match) {
+                    if (match.includes('<ul>')) return match;
+                    return '<ul>' + match + '</ul>';
+                });
+                
+                // Handle paragraphs - split by double newlines
+                var paragraphs = processedText.split(/\n\n+/);
+                processedText = paragraphs.map(function(p) {
+                    p = p.trim();
+                    if (!p) return '';
+                    if (p.startsWith('<')) return p; // Already HTML
+                    return '<p>' + p.replace(/\n/g, '<br>') + '</p>';
+                }).join('');
+
+                var responseHtml = `
+                    <div class="ai-response-content">
+                        <div class="ai-response-header">
+                            <span>✨</span>
+                            <span>Response</span>
+                        </div>
+                        <div class="ai-response-text">
+                            ${processedText}
+                        </div>
+                        ${responseUrl ? `
+                            <div class="ai-response-url">
+                                <a href="${responseUrl}${responseHash}" target="_blank">
+                                    <span>🌐</span>
+                                    <span>Open: ${responseUrl}${responseHash}</span>
+                                </a>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+
+                document.getElementById('ai-response').innerHTML = responseHtml;
+            })
+            .catch(error => {
+                // Restore button state
+                sendButton.querySelector('.button-text').textContent = originalButtonText;
+                sendButton.disabled = false;
+                sendButton.classList.remove('ai-loading-button');
+                queryInput.disabled = false;
+                
+                // Enhanced error display
+                document.getElementById('ai-response').innerHTML = `
+                    <div class="ai-error-container">
+                        <div class="ai-error-header">
+                            <span>❌</span>
+                            <span>Request Failed</span>
+                        </div>
+                        <div class="ai-error-message">
+                            ${error.message || error}
+                        </div>
+                        <div class="ai-error-tips">
+                            <strong>💡 Troubleshooting Tips:</strong>
+                            <ul>
+                                <li>Check if the API key is correctly configured</li>
+                                <li>Verify server logs for detailed error information</li>
+                                <li>Ensure OpenAI API service is accessible</li>
+                                <li>Try refreshing the page and retry</li>
+                            </ul>
+                        </div>
+                    </div>
+                `;
+            });
+        });
+    });
+</script>

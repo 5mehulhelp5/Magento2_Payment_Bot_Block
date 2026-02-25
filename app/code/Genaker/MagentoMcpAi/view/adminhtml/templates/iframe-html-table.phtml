@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magento MCP AI Assistant</title>
+    
+    <!-- Add Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <!-- Add custom styles -->
+    <link rel="stylesheet" href="<?= $block->getViewFileUrl('Genaker_MagentoMcpAi::css/styles.css'); ?>">
+</head>
+<body>
+    <!-- Simple app container div -->
+    <div id="app"></div>
+    
+    <!-- Using module script as requested -->
+    <script type="module">
+        // Import preact-htm-signals-standalone
+        import {
+            html,
+            render,
+            signal,
+            computed,
+            effect
+        } from "<?= $block->getViewFileUrl('Genaker_MagentoMcpAi/js/lib/standalone.js'); ?>";
+        
+        // Get API key from Magento configuration
+        const apiKey = "<?= $block->getApiKey() ?>";
+        
+        // Get MSPI API key from Magento configuration
+        const mspiApiKey = "<?= $block->getApiKey()/*getMspiApiKey() for now using api key */ ?>";
+        
+        // Debug API keys
+        console.log('API Key:', apiKey);
+        console.log('MSPI API Key:', mspiApiKey);
+        
+        // State management using signals
+        const messages = signal([{
+            type: 'assistant',
+            content: 'Hello! I can help you with your store data. Ask me anything!'
+        }]);
+        const input = signal('');
+        const selectedModel = signal('gpt-3.5-turbo');
+        const resultGrid = signal('');
+        const currentPage = signal(1);
+        const rowsPerPage = signal(100);
+        const totalRows = signal(0);
+        const paginatedData = signal([]);
+        const showTokenStats = signal(false);
+        const tokenUsage = signal({
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 0,
+            cost: 0
+        });
+        const currentMessageTokens = signal({
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 0,
+            cost: 0
+        });
+        const fullResultData = signal([]);
+        
+        // Model pricing per 1K tokens (in USD)
+        const MODEL_PRICING = {
+            'gpt-3.5-turbo': {
+                prompt: 0.0015,
+                completion: 0.002
+            },
+            'gpt-4': {
+                prompt: 0.03,
+                completion: 0.06
+            },
+            'gpt-4-turbo': {
+                prompt: 0.01,
+                completion: 0.03
+            },
+            'gpt-4-32k': {
+                prompt: 0.06,
+                completion: 0.12
+            }
+        };
+        
+        // Function to calculate cost based on tokens and model
+        function calculateCost(promptTokens, completionTokens, model) {
+            const pricing = MODEL_PRICING[model] || MODEL_PRICING['gpt-3.5-turbo'];
+            const promptCost = (promptTokens / 1000) * pricing.prompt;
+            const completionCost = (completionTokens / 1000) * pricing.completion;
+            return promptCost + completionCost;
+        }
+        
+        // Function to format cost as USD
+        function formatCost(cost) {
+            return `$${cost.toFixed(4)}`;
+        }
+        
+        // Debounce helper
+        let fixInChatTimeout = null;
+        
+        // Function to scroll to bottom
+        function scrollToBottom() {
+            const chatMessages = document.querySelector('.chat-messages');
+            if (chatMessages) {
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+        }
+
+        // Watch for changes in messages and scroll to bottom
+        effect(() => {
+            if (messages.value.length > 0) {
+                // Use setTimeout to ensure DOM is updated
+                setTimeout(scrollToBottom, 0);
+            }
+        });
+        
+        // Function to paginate data
+        function paginateData(data) {
+            if (!data || !data.length) return [];
+            
+            totalRows.value = data.length;
+            const start = (currentPage.value - 1) * rowsPerPage.value;
+            const end = start + rowsPerPage.value;
+            return data.slice(start, end);
+        }
+        
+        // Function to update result grid
+        function updateResultGrid() {
+            if (fullResultData.value && fullResultData.value.length > 0) {
+                // Get paginated subset of the full data
+                const paginatedResult = paginateData(fullResultData.value);
+                paginatedData.value = paginatedResult;
+
+                let tableHtml = '<div class="result-grid-container"><table class="result-grid"><thead><tr>';
+                
+                // Get headers from full data to ensure consistency
+                const headers = new Set();
+                fullResultData.value.forEach(row => {
+                    if (typeof row === 'object') {
+                        Object.keys(row).forEach(key => headers.add(key));
+                    }
+                });
+                
+                // Add headers
+                Array.from(headers).forEach(header => {
+                    tableHtml += `<th>${header}<div class="resize-handle"></div></th>`;
+                });
+                tableHtml += '</tr></thead><tbody>';
+                
+                // Add rows from paginated data
+                paginatedResult.forEach(row => {
+                    if (typeof row === 'object') {
+                        tableHtml += '<tr>';
+                        Array.from(headers).forEach(header => {
+                            const value = row[header];
+                            let displayValue = '';
+                            
+                            if (value === null || value === undefined) {
+                                displayValue = '';
+                            } else if (typeof value === 'object') {
+                                displayValue = JSON.stringify(value);
+                            } else {
+                                displayValue = String(value);
+                            }
+                            
+                            tableHtml += `<td title="${displayValue}">${displayValue}</td>`;
+                        });
+                        tableHtml += '</tr>';
+                    }
+                });
+                
+                tableHtml += '</tbody></table></div>';
+                
+                // Add pagination controls
+                tableHtml += createPaginationControls();
+                
+                // Add export button
+                tableHtml += '<button class="export-csv-button" onclick="exportToCSV()">Export to CSV</button>';
+                
+                resultGrid.value = tableHtml;
+
+                // Initialize column resizing after table is rendered
+                setTimeout(initializeColumnResizing, 0);
+            }
+        }
+        
+        // Function to initialize column resizing
+        function initializeColumnResizing() {
+            const table = document.querySelector('.result-grid');
+            if (!table) return;
+
+            const headers = table.querySelectorAll('th');
+            let isResizing = false;
+            let currentHeader = null;
+            let startX = 0;
+            let startWidth = 0;
+
+            headers.forEach(header => {
+                const handle = header.querySelector('.resize-handle');
+                if (!handle) return;
+
+                handle.addEventListener('mousedown', (e) => {
+                    isResizing = true;
+                    currentHeader = header;
+                    startX = e.pageX;
+                    startWidth = header.offsetWidth;
+                    header.classList.add('resizing');
+                    e.preventDefault();
+                });
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isResizing || !currentHeader) return;
+
+                const width = startWidth + (e.pageX - startX);
+                if (width >= 100) { // Minimum width of 100px
+                    currentHeader.style.width = width + 'px';
+                }
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (isResizing && currentHeader) {
+                    isResizing = false;
+                    currentHeader.classList.remove('resizing');
+                    currentHeader = null;
+                }
+            });
+        }
+        
+        // Function to create pagination controls
+        function createPaginationControls() {
+            const totalPages = Math.ceil(totalRows.value / rowsPerPage.value);
+            if (totalPages <= 1) return '';
+            
+            // Initialize pagination variables
+            const maxPages = 5;
+            let startPage = Math.max(1, currentPage.value - Math.floor(maxPages / 2));
+            let endPage = Math.min(totalPages, startPage + maxPages - 1);
+            
+            // Adjust start page if we're near the end
+            if (endPage - startPage + 1 < maxPages) {
+                startPage = Math.max(1, endPage - maxPages + 1);
+            }
+            
+            let controls = '<div class="pagination-controls">';
+            controls += `<span class="pagination-info">Showing ${((currentPage.value - 1) * rowsPerPage.value) + 1} to ${Math.min(currentPage.value * rowsPerPage.value, totalRows.value)} of ${totalRows.value} rows</span>`;
+            
+            controls += '<div class="pagination-buttons">';
+            
+            // Previous button
+            if (currentPage.value > 1) {
+                controls += `<button class="pagination-button" onclick="window.changePage(${currentPage.value - 1})">Previous</button>`;
+            }
+            
+            // Page numbers
+            controls += '<div class="pagination-numbers">';
+            
+            // First page and ellipsis
+            if (startPage > 1) {
+                controls += `<button class="pagination-button" onclick="window.changePage(1)">1</button>`;
+                if (startPage > 2) {
+                    controls += '<span class="pagination-ellipsis">...</span>';
+                }
+            }
+            
+            // Page numbers
+            for (let i = startPage; i <= endPage; i++) {
+                if (i === currentPage.value) {
+                    controls += `<button class="pagination-button active" disabled>${i}</button>`;
+                } else {
+                    controls += `<button class="pagination-button" onclick="window.changePage(${i})">${i}</button>`;
+                }
+            }
+            
+            // Last page and ellipsis
+            if (endPage < totalPages) {
+                if (endPage < totalPages - 1) {
+                    controls += '<span class="pagination-ellipsis">...</span>';
+                }
+                controls += `<button class="pagination-button" onclick="window.changePage(${totalPages})">${totalPages}</button>`;
+            }
+            
+            controls += '</div>'; // Close pagination-numbers
+            
+            // Next button
+            if (currentPage.value < totalPages) {
+                controls += `<button class="pagination-button" onclick="window.changePage(${currentPage.value + 1})">Next</button>`;
+            }
+            
+            controls += '</div></div>';
+            
+            return controls;
+        }
+        
+        // Function to change page
+        window.changePage = function(page) {
+            if (page < 1 || page > Math.ceil(totalRows.value / rowsPerPage.value)) {
+                return;
+            }
+            currentPage.value = page;
+            // Force update the result grid
+            updateResultGrid();
+        };
+        
+        // Function to update token usage
+        function updateTokenUsage(usage) {
+            if (usage && typeof usage === 'object') {
+                const current = tokenUsage.value;
+                // Update current message tokens
+                const currentCost = calculateCost(
+                    parseInt(usage.prompt_tokens) || 0,
+                    parseInt(usage.completion_tokens) || 0,
+                    selectedModel.value
+                );
+                currentMessageTokens.value = {
+                    prompt_tokens: parseInt(usage.prompt_tokens) || 0,
+                    completion_tokens: parseInt(usage.completion_tokens) || 0,
+                    total_tokens: parseInt(usage.total_tokens) || 0,
+                    cost: currentCost
+                };
+                // Update cumulative tokens and cost
+                tokenUsage.value = {
+                    prompt_tokens: current.prompt_tokens + currentMessageTokens.value.prompt_tokens,
+                    completion_tokens: current.completion_tokens + currentMessageTokens.value.completion_tokens,
+                    total_tokens: current.total_tokens + currentMessageTokens.value.total_tokens,
+                    cost: current.cost + currentCost
+                };
+                console.log('Updated token usage:', {
+                    current: currentMessageTokens.value,
+                    cumulative: tokenUsage.value
+                });
+            }
+        }
+        
+        // Function to toggle token stats visibility
+        function toggleTokenStats() {
+            showTokenStats.value = !showTokenStats.value;
+        }
+        
+        // Function to close token stats
+        function closeTokenStats() {
+            showTokenStats.value = false;
+        }
+        
+        // Async function to send message to backend
+        async function sendMessage(message) {
+            try {
+                // Only add user message if it's not already the last message
+                const lastMessage = messages.value[messages.value.length - 1];
+                if (!lastMessage || lastMessage.content !== message) {
+                    messages.value = [...messages.value, {
+                        type: 'user',
+                        content: message
+                    }];
+                }
+
+                // Add thinking message
+                messages.value = [...messages.value, {
+                    type: 'assistant',
+                    content: 'Thinking...'
+                }];
+
+                // Force scroll after adding thinking message
+                setTimeout(scrollToBottom, 0);
+
+                console.log('Sending request to API with:', {
+                    prompt: message,
+                    model: selectedModel.value,
+                    mspiApiKey: mspiApiKey
+                });
+
+                const response = await fetch('/rest/V1/magentomcpai/query', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        prompt: message,
+                        model: selectedModel.value,
+                        mspiApiKey: mspiApiKey
+                    }),
+                    credentials: 'same-origin'
+                });
+                
+                console.log('API Response status:', response.status);
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    console.error('API Error:', errorData);
+                    throw new Error(errorData.message || `Server responded with status ${response.status}`);
+                }
+                
+                const data = await response.json();
+                console.log('Full API Response:', data);
+                
+                // Remove thinking message
+                messages.value = messages.value.slice(0, -1);
+                
+                if (data && typeof data === 'object') {
+                    let success, type, content, result, tokenData;
+                    
+                    if (Array.isArray(data)) {
+                        [success, type, content, result, tokenData] = data;
+                        if (tokenData && typeof tokenData === 'object') {
+                            updateTokenUsage(tokenData);
+                        }
+                    } else {
+                        success = data.success;
+                        type = data.type;
+                        content = data.content || '';
+                        result = data.result || [];
+                        
+                        if (data.token_usage) {
+                            updateTokenUsage(data.token_usage);
+                        }
+                    }
+
+                    // Store the full result data for export
+                    if (type === 'query_result' && Array.isArray(result)) {
+                        fullResultData.value = result;
+                        // Reset to first page when new data arrives
+                        currentPage.value = 1;
+                        // Update the grid with the new data
+                        updateResultGrid();
+                    } else {
+                        fullResultData.value = [];
+                        resultGrid.value = '';
+                    }
+
+                    // Only add assistant message if content exists and it's not already the last message
+                    if (content && content.trim()) {
+                        const lastMessage = messages.value[messages.value.length - 1];
+                        if (!lastMessage || lastMessage.content !== content) {
+                            messages.value = [...messages.value, {
+                                type: 'assistant',
+                                content: content
+                            }];
+                        }
+                    }
+
+                    // Handle response based on type
+                    if (type === 'error') {
+                        let errorMessage = '';
+                        if (typeof result === 'string') {
+                            errorMessage = result;
+                        } else if (Array.isArray(result) && result.length > 0) {
+                            errorMessage = result[0];
+                        } else {
+                            errorMessage = 'An unknown error occurred';
+                        }
+                        
+                        let errorHtml = '<div class="error-message">';
+                        errorHtml += errorMessage;
+                        errorHtml += '<button class="fix-in-chat-button" onclick="fixErrorInChat(this)">Fix in Chat</button>';
+                        errorHtml += '</div>';
+                        resultGrid.value = errorHtml;
+                    } else if (type === 'query_result' && Array.isArray(result)) {
+                        if (result.length === 0) {
+                            // Show message for empty result only if it was a query execution
+                            resultGrid.value = '<div class="message-warning"><i class="fas fa-info-circle"></i> No data found</div>';
+                        } else {
+                            // Store full data for CSV export
+                            paginatedData.value = result;
+                            // Paginate the data for display
+                            const displayData = paginateData(result);
+                            paginatedData.value = displayData;
+                            updateResultGrid();
+                        }
+                    } else {
+                        // Clear the result grid for other response types
+                        resultGrid.value = '';
+                    }
+                } else {
+                    console.error('Invalid response format:', data);
+                    // Show invalid format error
+                    messages.value = [...messages.value, {
+                        type: 'assistant',
+                        content: 'Invalid response format received'
+                    }];
+                    resultGrid.value = '<div class="error-message">Invalid response format received<button class="fix-in-chat-button" onclick="fixErrorInChat(this)">Fix in Chat</button></div>';
+                }
+                
+            } catch (error) {
+                console.error('Error in sendMessage:', error);
+                fullResultData.value = [];
+                // Remove thinking message
+                messages.value = messages.value.slice(0, -1);
+                // Add error message
+                messages.value = [...messages.value, {
+                    type: 'assistant',
+                    content: `Error: ${error.message}`
+                }];
+            }
+        }
+        
+        // Event handler for sending messages
+        function handleSend() {
+            if (!input.value.trim()) return;
+            
+            const message = input.value.trim();
+            input.value = '';
+            
+            sendMessage(message);
+        }
+        
+        // Function to clear messages and results
+        function clearChat() {
+            messages.value = [{
+                type: 'assistant',
+                content: 'Hello! I can help you with your store data. Ask me anything!'
+            }];
+            resultGrid.value = '';
+            tokenUsage.value = {
+                prompt_tokens: 0,
+                completion_tokens: 0,
+                total_tokens: 0,
+                cost: 0
+            };
+            currentMessageTokens.value = {
+                prompt_tokens: 0,
+                completion_tokens: 0,
+                total_tokens: 0,
+                cost: 0
+            };
+            
+            // Clear cache on backend
+            fetch('/rest/V1/magentomcpai/clear', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    mspiApiKey: mspiApiKey
+                }),
+                credentials: 'same-origin'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (!data.success) {
+                    console.error('Failed to clear cache:', data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error clearing cache:', error);
+            });
+        }
+        
+        // Function to export chat messages to CSV
+        function exportChatToCSV() {
+            const csv = [];
+            // Add headers
+            csv.push(['Type', 'Message']);
+            
+            // Add messages
+            messages.value.forEach(msg => {
+                // Properly escape message content for CSV
+                let content = msg.content;
+                if (content.includes(',') || content.includes('"') || content.includes('\n')) {
+                    content = `"${content.replace(/"/g, '""')}"`;
+                }
+                csv.push([msg.type, content]);
+            });
+            
+            // Create and download CSV file
+            const blob = new Blob([csv.map(row => row.join(',')).join('\n')], { 
+                type: 'text/csv;charset=utf-8;' 
+            });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            
+            // Get current date for filename
+            const date = new Date();
+            const filename = `chat_history_${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}.csv`;
+            
+            link.setAttribute('href', url);
+            link.setAttribute('download', filename);
+            link.style.visibility = 'hidden';
+            
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+        
+        // Main App component
+        const App = () => html`
+            <div class="mcpai-container">
+                ${!apiKey && html`
+                    <div class="message message-warning">
+                        Please configure your OpenAI API key in System > Configuration > Genaker > Magento MCP AI
+                    </div>
+                `}
+                
+                <div class="chat-section">
+                    <div class="model-selector">
+                        <label for="ai-model">Select AI Model:</label>
+                        <select 
+                            id="ai-model" 
+                            class="admin__control-select"
+                            value=${selectedModel.value}
+                            onChange=${e => selectedModel.value = e.target.value}
+                        >
+                            <optgroup label="Free Models">
+                                <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                            </optgroup>
+                            <optgroup label="Paid Models">
+                                <option value="gpt-4">GPT-4</option>
+                                <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                                <option value="gpt-4-32k">GPT-4 32k</option>
+                            </optgroup>
+                        </select>
+                    </div>
+                    
+                    <div class="chat-messages">
+                        ${messages.value.map((msg, index) => html`
+                            <div key=${index} class=${msg.type + '-message'}>
+                                ${msg.content}
+                                <button class="copy-button" onclick=${() => copyMessage(index)} title="Copy message">
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                            </div>
+                        `)}
+                    </div>
+                    
+                    <div class="chat-input">
+                        <textarea 
+                            value=${input.value}
+                            onInput=${e => input.value = e.target.value}
+                            onKeyPress=${e => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                    e.preventDefault();
+                                    handleSend();
+                                }
+                            }}
+                            placeholder="Ask me anything about your store data..."
+                        ></textarea>
+                        <div class="chat-buttons">
+                            <button 
+                                type="button" 
+                                class="action-primary"
+                                onClick=${handleSend}
+                            >
+                                Send
+                            </button>
+                            <button 
+                                type="button" 
+                                class="action-secondary"
+                                onClick=${clearChat}
+                            >
+                                Clear
+                            </button>
+                            <button 
+                                type="button" 
+                                class="action-secondary"
+                                onClick=${exportChatToCSV}
+                                title="Save chat history as CSV"
+                            >
+                                <i class="fas fa-download"></i> Save Chat
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                ${resultGrid.value && html`
+                    <div class="result-section">
+                        <div class="result-content" dangerouslySetInnerHTML=${{ __html: resultGrid.value }} />
+                    </div>
+                `}
+                
+                ${showTokenStats.value ? html`
+                    <div class="token-stats-section">
+                        <div class="token-stats-header" onClick=${() => showTokenStats.value = !showTokenStats.value}>
+                            <div class="header-content">
+                                <i class="fas fa-chart-bar"></i>
+                                <h3>Token Usage Statistics</h3>
+                                <span class="total-tokens">Tokens: ${tokenUsage.value.total_tokens} | Cost: ${formatCost(tokenUsage.value.cost)}</span>
+                            </div>
+                            <i class="fas fa-chevron-down toggle-icon"></i>
+                        </div>
+                        <div class="token-stats-body">
+                            <div class="token-stats-panel">
+                                <div class="token-stats-subsection">
+                                    <div class="subsection-header">
+                                        <i class="fas fa-message"></i>
+                                        <h4>Current Message | Cost: ${formatCost(currentMessageTokens.value.cost)}</h4>
+                                    </div>
+                                    <div class="token-stat">
+                                        <div class="stat-row">
+                                            <span class="token-label">
+                                                <i class="fas fa-arrow-right"></i> Prompt (${currentMessageTokens.value.prompt_tokens})
+                                            </span>
+                                            <span class="token-value">${currentMessageTokens.value.prompt_tokens} (${formatCost(calculateCost(currentMessageTokens.value.prompt_tokens, 0, selectedModel.value))})</span>
+                                        </div>
+                                        <div class="stat-row">
+                                            <span class="token-label">
+                                                <i class="fas fa-arrow-left"></i> Completion (${currentMessageTokens.value.completion_tokens})
+                                            </span>
+                                            <span class="token-value">${currentMessageTokens.value.completion_tokens} (${formatCost(calculateCost(0, currentMessageTokens.value.completion_tokens, selectedModel.value))})</span>
+                                        </div>
+                                        <div class="stat-row total">
+                                            <span class="token-label">
+                                                <i class="fas fa-equals"></i> Total (${currentMessageTokens.value.total_tokens})
+                                            </span>
+                                            <span class="token-value">${currentMessageTokens.value.total_tokens} (${formatCost(currentMessageTokens.value.cost)})</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="token-stats-subsection">
+                                    <div class="subsection-header">
+                                        <i class="fas fa-clock-rotate-left"></i>
+                                        <h4>Session Total | Cost: ${formatCost(tokenUsage.value.cost)}</h4>
+                                    </div>
+                                    <div class="token-stat">
+                                        <div class="stat-row">
+                                            <span class="token-label">
+                                                <i class="fas fa-arrow-right"></i> Prompt (${tokenUsage.value.prompt_tokens})
+                                            </span>
+                                            <span class="token-value">${tokenUsage.value.prompt_tokens} (${formatCost(calculateCost(tokenUsage.value.prompt_tokens, 0, selectedModel.value))})</span>
+                                        </div>
+                                        <div class="stat-row">
+                                            <span class="token-label">
+                                                <i class="fas fa-arrow-left"></i> Completion (${tokenUsage.value.completion_tokens})
+                                            </span>
+                                            <span class="token-value">${tokenUsage.value.completion_tokens} (${formatCost(calculateCost(0, tokenUsage.value.completion_tokens, selectedModel.value))})</span>
+                                        </div>
+                                        <div class="stat-row total">
+                                            <span class="token-label">
+                                                <i class="fas fa-equals"></i> Total (${tokenUsage.value.total_tokens})
+                                            </span>
+                                            <span class="token-value">${tokenUsage.value.total_tokens} (${formatCost(tokenUsage.value.cost)})</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                ` : html`
+                    <div class="token-stats-collapsed">
+                        <div class="token-stats-header" onClick=${() => showTokenStats.value = !showTokenStats.value}>
+                            <div class="header-content">
+                                <i class="fas fa-chart-bar"></i>
+                                <h3>Token Usage Statistics</h3>
+                                <span class="total-tokens">Tokens: ${tokenUsage.value.total_tokens} | Cost: ${formatCost(tokenUsage.value.cost)}</span>
+                            </div>
+                            <i class="fas fa-chevron-down toggle-icon"></i>
+                        </div>
+                    </div>
+                `}
+            </div>
+        `;
+        
+        // Render the app
+        render(html`<${App} />`, document.getElementById('app'));
+        
+        // Function to fix error in chat
+        window.fixErrorInChat = function(button) {
+            // Prevent multiple rapid clicks
+            if (fixInChatTimeout) {
+                return;
+            }
+            
+            const errorMessage = button.parentElement.textContent.replace('Fix in Chat', '').trim();
+            
+            // Check if this exact error was already being fixed
+            const lastMessages = messages.value.slice(-4);
+            const isDuplicate = lastMessages.some(msg => 
+                msg.type === 'user' && 
+                msg.content.includes(errorMessage)
+            );
+            
+            if (isDuplicate) {
+                return;
+            }
+            
+            // Check if this is an SQL error
+            if (errorMessage.includes('SQLSTATE[42S22]')) {
+                // Extract table and column information from the error message
+                const tableMatch = errorMessage.match(/FROM\s+(\w+)(?:\s+AS\s+(\w+))?/i);
+                const columnMatch = errorMessage.match(/Unknown column '([^']+)'/i);
+                const queryMatch = errorMessage.match(/query was:\s+(.+?);/i);
+                
+                if (tableMatch && columnMatch && queryMatch) {
+                    const tableName = tableMatch[1];
+                    const columnName = columnMatch[1];
+                    const fullQuery = queryMatch[1];
+                    
+                    // Check if the error is related to a JOIN
+                    if (fullQuery.toLowerCase().includes('join')) {
+                        // Extract all tables involved in the JOIN
+                        const joinTables = fullQuery.match(/FROM\s+(\w+)(?:\s+AS\s+\w+)?\s+JOIN\s+(\w+)(?:\s+AS\s+\w+)?/i);
+                        
+                        if (joinTables) {
+                            const [_, mainTable, joinTable] = joinTables;
+                            
+                            // Add explanation message
+                            messages.value = [...messages.value, {
+                                type: 'assistant',
+                                content: `Let's check the structure of both tables involved in the JOIN to find the correct column names:`
+                            }];
+                            
+                            // Add the first DESCRIBE query as a user message
+                            const firstQuery = `DESCRIBE ${mainTable};`;
+                            messages.value = [...messages.value, {
+                                type: 'user',
+                                content: firstQuery
+                            }];
+                            
+                            // Send the first DESCRIBE query
+                            sendMessage(firstQuery);
+                            
+                            // Set timeout to prevent multiple clicks
+                            fixInChatTimeout = setTimeout(() => {
+                                fixInChatTimeout = null;
+                            }, 2000);
+                            
+                            // Wait a bit and then send the second DESCRIBE query
+                            setTimeout(() => {
+                                const secondQuery = `DESCRIBE ${joinTable};`;
+                                messages.value = [...messages.value, {
+                                    type: 'user',
+                                    content: secondQuery
+                                }];
+                                sendMessage(secondQuery);
+                                
+                                // Force scroll to bottom after second query
+                                setTimeout(() => {
+                                    const chatMessages = document.querySelector('.chat-messages');
+                                    if (chatMessages) {
+                                        chatMessages.scrollTop = chatMessages.scrollHeight;
+                                    }
+                                }, 100);
+                            }, 1500);
+                            
+                            // Force scroll after adding messages
+                            setTimeout(scrollToBottom, 0);
+                            
+                            return;
+                        }
+                    }
+                }
+            }
+            
+            // For other errors, proceed with normal fix
+            const fixMessage = `FIX: ${errorMessage}`;
+            
+            // Add the fix message as a user message first
+            messages.value = [...messages.value, {
+                type: 'user',
+                content: fixMessage
+            }];
+            
+            // Force scroll after adding fix message
+            setTimeout(scrollToBottom, 0);
+            
+            // Send the message (this will add the assistant's response)
+            sendMessage(fixMessage);
+            
+            // Set timeout to prevent multiple clicks
+            fixInChatTimeout = setTimeout(() => {
+                fixInChatTimeout = null;
+            }, 2000);
+        };
+        
+        // Function to export table data to CSV
+        window.exportToCSV = function() {
+            // Get the full result data
+            const data = fullResultData.value;
+            
+            if (!data || !data.length) {
+                console.error('No data available for export');
+                return;
+            }
+
+            try {
+                // Get all unique headers from the data
+                const headers = Array.from(
+                    new Set(
+                        data.reduce((acc, row) => {
+                            return acc.concat(Object.keys(row));
+                        }, [])
+                    )
+                );
+
+                // Create CSV content
+                const csvRows = [];
+
+                // Add headers
+                csvRows.push(headers.join(','));
+
+                // Add data rows
+                data.forEach(row => {
+                    const values = headers.map(header => {
+                        const value = row[header];
+                        let csvValue = '';
+
+                        if (value === null || value === undefined) {
+                            csvValue = '';
+                        } else if (typeof value === 'object') {
+                            csvValue = JSON.stringify(value);
+                        } else {
+                            csvValue = String(value);
+                        }
+
+                        // Escape values that contain commas, quotes, or newlines
+                        if (csvValue.includes(',') || csvValue.includes('"') || csvValue.includes('\n')) {
+                            csvValue = `"${csvValue.replace(/"/g, '""')}"`;
+                        }
+
+                        return csvValue;
+                    });
+                    csvRows.push(values.join(','));
+                });
+
+                // Create and download the CSV file
+                const csvContent = csvRows.join('\n');
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
+                const filename = `query_result_${timestamp}.csv`;
+
+                const link = document.createElement('a');
+                link.setAttribute('href', url);
+                link.setAttribute('download', filename);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            } catch (error) {
+                console.error('Error exporting CSV:', error);
+            }
+        };
+
+        // Function to copy message to clipboard
+        function copyMessage(index) {
+            const message = messages.value[index];
+            if (message && message.content) {
+                navigator.clipboard.writeText(message.content)
+                    .then(() => {
+                        // Show success feedback
+                        const button = document.querySelector(`.chat-messages .${message.type}-message:nth-child(${index + 1}) .copy-button`);
+                        if (button) {
+                            const originalIcon = button.innerHTML;
+                            button.innerHTML = '<i class="fas fa-check"></i>';
+                            button.style.color = '#28a745';
+                            setTimeout(() => {
+                                button.innerHTML = originalIcon;
+                                button.style.color = '#666';
+                            }, 2000);
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Failed to copy message:', err);
+                    });
+            }
+        };
+    </script>
+</body>
+</html> 

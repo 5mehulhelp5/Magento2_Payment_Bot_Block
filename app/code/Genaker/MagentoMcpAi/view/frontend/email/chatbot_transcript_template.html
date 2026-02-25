@@ -1,0 +1,26 @@
+<!--@subject {{trans "Chatbot Conversation Transcript - %customer_email" customer_email=$customer_email}} @-->
+<!--@vars {
+"var conversation_id":"Conversation ID",
+"var customer_email":"Customer Email",
+"var customer_name":"Customer Name",
+"var started_at":"Conversation Start Time",
+"var last_activity_at":"Last Activity Time",
+"var transcript":"Conversation Transcript",
+"var store_name":"Store Name"
+} @-->
+
+<p>{{trans "A customer chat session has ended. Below is the transcript of the conversation."}}</p>
+
+<p>
+<strong>{{trans "Store:"}}</strong> {{var store_name}}<br/>
+<strong>{{trans "Customer:"}}</strong> {{var customer_name}} &lt;{{var customer_email}}&gt;<br/>
+<strong>{{trans "Started:"}}</strong> {{var started_at}}<br/>
+<strong>{{trans "Last Activity:"}}</strong> {{var last_activity_at}}<br/>
+<strong>{{trans "Conversation ID:"}}</strong> {{var conversation_id}}
+</p>
+
+<div style="border: 1px solid #ccc; padding: 15px; margin: 15px 0; white-space: pre-wrap; font-family: monospace;">
+{{var transcript|raw}}
+</div>
+
+<p>{{trans "You can view this conversation in the Magento admin panel under the Chatbot Conversations menu."}}</p>

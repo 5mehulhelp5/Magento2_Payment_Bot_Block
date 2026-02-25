@@ -1,0 +1,22 @@
+{
+    "chatbot_conversations": {
+        "column": {
+            "conversation_id": true,
+            "customer_email": true,
+            "conversation_data": true,
+            "status": true,
+            "started_at": true,
+            "last_activity_at": true,
+            "store_id": true,
+            "transcript_sent": true
+        },
+        "index": {
+            "CHATBOT_CONVERSATIONS_CUSTOMER_EMAIL": true,
+            "CHATBOT_CONVERSATIONS_STATUS": true,
+            "CHATBOT_CONVERSATIONS_STORE_ID": true
+        },
+        "constraint": {
+            "PRIMARY": true
+        }
+    }
+}

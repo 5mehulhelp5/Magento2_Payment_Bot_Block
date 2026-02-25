@@ -1,0 +1,363 @@
+<?php
+/**
+ * Product Chat template
+ */
+?>
+<style>
+.chat-container {
+    max-width: 100%;
+    margin: 0 auto;
+    font-family: 'Open Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+
+.chat-header {
+    text-align: center;
+    padding: 15px 0;
+    border-bottom: 1px solid #e0e0e0;
+    margin-bottom: 20px;
+}
+
+.chat-messages {
+    height: 500px;
+    overflow-y: auto;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+}
+
+.message {
+    max-width: 80%;
+    padding: 12px 16px;
+    margin-bottom: 15px;
+    border-radius: 10px;
+    line-height: 1.5;
+    position: relative;
+    word-wrap: break-word;
+}
+
+.message a {
+    color: #0066cc;
+    text-decoration: underline;
+    font-weight: 600;
+    transition: color 0.2s;
+}
+
+.message a:hover {
+    color: #004499;
+    text-decoration: none;
+}
+
+.message strong {
+    font-weight: 600;
+    color: #333;
+}
+
+.ai-message ul, .ai-message ol {
+    padding-left: 20px;
+    margin: 10px 0;
+}
+
+.ai-message li {
+    margin-bottom: 5px;
+}
+
+.product-item {
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 15px;
+    margin: 10px 0;
+    background-color: #f9f9f9;
+}
+
+.product-title {
+    font-size: 16px;
+    font-weight: bold;
+    margin-bottom: 10px;
+    color: #333;
+}
+
+.product-details {
+    display: flex;
+    flex-wrap: wrap;
+}
+
+.product-detail {
+    margin-right: 15px;
+    margin-bottom: 5px;
+}
+
+.product-image-container {
+    margin: 15px 0;
+    text-align: center;
+}
+
+.product-image {
+    max-width: 100%;
+    max-height: 300px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    transition: transform 0.3s ease;
+}
+
+.product-image:hover {
+    transform: scale(1.02);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.message:before {
+    content: "";
+}
+
+.user-message {
+    align-self: flex-end;
+    background-color: #007bff;
+    color: white;
+    border-bottom-right-radius: 2px;
+    margin-left: auto;
+}
+
+.ai-message {
+    align-self: flex-start;
+    background-color: #f0f0f0;
+    color: #333;
+    border-bottom-left-radius: 2px;
+    margin-right: auto;
+}
+
+.chat-input-container {
+    display: flex;
+    padding: 15px;
+    border-top: 1px solid #e0e0e0;
+    background-color: #fff;
+    position: relative;
+    border-radius: 8px;
+    box-shadow: 0 -2px 5px rgba(0,0,0,0.05);
+}
+
+.chat-input {
+    flex: 1;
+    padding: 12px;
+    border: 1px solid #ccc;
+    border-radius: 20px;
+    font-size: 14px;
+    outline: none;
+    transition: border 0.3s;
+}
+
+.chat-input:focus {
+    border-color: #007bff;
+}
+
+.send-button {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 0 15px;
+    height: 40px;
+    margin-left: 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.3s;
+}
+
+.send-button:hover {
+    background-color: #0069d9;
+}
+
+.loading-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.loading-dots {
+    display: flex;
+}
+
+.loading-dots span {
+    width: 8px;
+    height: 8px;
+    margin: 0 3px;
+    background-color: #888;
+    border-radius: 50%;
+    animation: bounce 1.5s infinite ease-in-out;
+}
+
+.loading-dots span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.loading-dots span:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes bounce {
+    0%, 80%, 100% { transform: scale(0); }
+    40% { transform: scale(1); }
+}
+
+.chat-disclaimer {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 15px;
+    margin-top: 15px;
+    font-size: 13px;
+    color: #555;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+    border: 1px solid #e0e0e0;
+}
+
+.disclaimer-icon {
+    margin-right: 8px;
+    color: #007bff;
+    font-size: 16px;
+}
+
+.chat-disclaimer p {
+    margin: 0;
+}
+</style>
+
+<div class="admin__page-content">
+    <div class="admin__page-content-header">
+        <h1 class="admin__page-header"><?= $block->escapeHtml(__('Product Chat')) ?></h1>
+    </div>
+    <div class="admin__page-content-main">
+        <div class="chat-container">
+            <div class="chat-messages" id="chat-messages"></div>
+            <div class="chat-input-container">
+                <input type="text" class="chat-input" id="product-chat-query" placeholder="Ask about products..." />
+                <button type="button" class="send-button" id="send-product-chat">
+                    <span><?= $block->escapeHtml(__('Send')) ?></span>
+                </button>
+            </div>
+            <div class="chat-disclaimer">
+                <div class="disclaimer-icon"><i class="fa fa-info-circle"></i></div>
+                <p><strong>Note:</strong> AI can make mistakes. Consider verifying important information.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="text/javascript">
+require(['jquery'], function($) {
+    $(document).ready(function() {
+        // Initialize conversation history array to store all messages
+        let conversationHistory = [];
+
+        function addMessageToHistory(message, isUser) {
+            // Add message to conversation history array
+            conversationHistory.push({
+                role: isUser ? 'user' : 'assistant',
+                content: message
+            });
+            
+            const messageDiv = $('<div>', {
+                class: 'message ' + (isUser ? 'user-message' : 'ai-message')
+            });
+
+            const messageContent = $('<div>');
+            
+            // Always use HTML for AI messages, text for user messages
+            if (isUser) {
+                messageContent.text(message);
+            } else {
+                // For AI messages, use html method to render HTML content
+                messageContent.html(message);
+                
+                // Make links open in new tab and add styling
+                messageContent.find('a').attr('target', '_blank').addClass('product-link');
+                
+                // Enhance product listings with better styling
+                if (message.includes('<strong>1.</strong>') || message.includes('<strong>Price</strong>')) {
+                    // Add product item styling
+                    setTimeout(function() {
+                        // Simple approach - just add a class to the message for styling
+                        messageContent.addClass('product-listing');
+                        
+                        // Add product-item class to sections with product info
+                        const html = messageContent.html();
+                        if (html) {
+                            const enhancedHtml = html.replace(
+                                /<strong>(\d+)\.<\/strong>([\s\S]*?)(?=<strong>\d+\.<\/strong>|$)/g,
+                                function(match, number, content) {
+                                    return '<div class="product-item"><strong>' + number + '.</strong>' + content + '</div>';
+                                }
+                            );
+                            messageContent.html(enhancedHtml);
+                        }
+                    }, 100);
+                }
+            }
+
+            messageDiv.append(messageContent);
+            $('#chat-messages').append(messageDiv);
+            $('#chat-messages').scrollTop($('#chat-messages')[0].scrollHeight);
+        }
+
+        $('#send-product-chat').on('click', function() {
+            const query = $('#product-chat-query').val();
+            if (!query) {
+                alert('<?= $block->escapeHtml(__('Please enter a question')) ?>');
+                return;
+            }
+
+            // Add user message to history
+            addMessageToHistory(query, true);
+            $('#product-chat-query').val('');
+
+            // Show loading state
+            const loadingDiv = $('<div>', {
+                class: 'message ai-message loading-indicator'
+            });
+            loadingDiv.html(`
+                <div class="loading-dots">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            `);
+            $('#chat-messages').append(loadingDiv);
+            $('#chat-messages').scrollTop($('#chat-messages')[0].scrollHeight);
+
+            // Send request to API with full conversation history
+            $.ajax({
+                url: '<?php echo $block->getUrl('magentomcpai/productchat/process'); ?>',
+                method: 'POST',
+                data: { 
+                    query: query,
+                    conversation_history: JSON.stringify(conversationHistory)
+                },
+                success: function(response) {
+                    // Remove loading message
+                    loadingDiv.remove();
+                    
+                    // Add AI response to history
+                    addMessageToHistory(response.message, false);
+                },
+                error: function(xhr, status, error) {
+                    // Remove loading message
+                    loadingDiv.remove();
+                    
+                    // Add error message to history
+                    addMessageToHistory('Error: ' + error, false);
+                }
+            });
+        });
+
+        // Handle Enter key
+        $('#product-chat-query').on('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                $('#send-product-chat').click();
+            }
+        });
+    });
+});
+</script>

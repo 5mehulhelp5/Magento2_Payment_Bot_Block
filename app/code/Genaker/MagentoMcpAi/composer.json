@@ -1,0 +1,44 @@
+{
+    "name": "genaker/agento-ai",
+    "description": "Magento MCP AI Assistant - A powerful AI assistant for Magento 2 that helps with store data queries and management",
+    "type": "magento2-module",
+    "license": [
+        "OSL-3.0",
+        "AFL-3.0"
+    ],
+    "require": {
+        "php": ">=8.0.0"
+    },
+    "autoload": {
+        "files": [
+            "registration.php"
+        ],
+        "psr-4": {
+            "Genaker\\MagentoMcpAi\\": ""
+        }
+    },
+    "keywords": [
+        "magento",
+        "magento2",
+        "ai",
+        "assistant",
+        "chat",
+        "openai",
+        "gpt"
+    ],
+    "authors": [
+        {
+            "name": "Genaker",
+            "email": "egorshytikov@gmail.com",
+            "role": "Developer"
+        }
+    ],
+    "support": {
+        "email": "egorshytikov@gmail.com",
+        "issues": "https://github.com/genaker/magento-mcp-ai/issues",
+        "wiki": "https://github.com/genaker/magento-mcp-ai/wiki",
+        "source": "https://github.com/genaker/magento-mcp-ai"
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+} 
